@@ -107,8 +107,7 @@ class _HomeState extends State<Home> {
                       );
                     default:
                       if (snapshot.hasData){
-                        documents = snapshot.data.docs;} // bug qdo ordena e apaga todos registros um por um o
-                      //documents = snapshot.data.docs;      // ultimo não apaga da tela, pode ser o setstate
+                        documents = snapshot.data.docs;}
 
                       return ListView.builder(
                           itemCount: documents.length,
@@ -172,8 +171,6 @@ class _HomeState extends State<Home> {
           _lastRemoved = Map.from(documents[index].data());
           _lastRemovedPos = documents[index].id;
 
-
-          //forcei um setstate aqui pra ver se resolvia o bug da deleção do ultimo registro, mas não funfou
           setState(() {
             FirebaseFirestore.instance.collection('listacompras')
                 .doc(_lastRemovedPos).delete();
