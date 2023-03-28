@@ -1,12 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
-void main() {
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(MaterialApp(
     home: Home(),
+    debugShowCheckedModeBanner: false
   ));
 }
 
@@ -20,110 +22,129 @@ class _HomeState extends State<Home> {
 
   final _toDoController = TextEditingController();
 
-  List _toDoList = [];
 
   Map<String, dynamic> _lastRemoved;
-  int _lastRemovedPos;
+  String _lastRemovedPos;
 
   @override
   void initState() {
     super.initState();
-
-    _readData().then((data) {
-      setState(() {
-        _toDoList = json.decode(data);
-        _saveData();
-      });
-    });
   }
 
-  void _addToDo() {
+  bool _isComposing = false;
+
+  List<DocumentSnapshot> documents = [];
+
+  void _reset() {
+    _toDoController.clear();
     setState(() {
-      Map<String, dynamic> newToDo = Map();
-      if (_toDoController.text.isEmpty) {
-        return;
-      }
-      newToDo["title"] = _toDoController.text;
-      _toDoController.text = "";
-      newToDo["ok"] = false;
-      _toDoList.add(newToDo);
-      _saveData();
+      _isComposing = false;
     });
-  }
-
-  Future<Null> _refresh() async {
-    await Future.delayed(Duration(seconds: 1));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          "Lista de Compras",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.blueAccent,
-        centerTitle: true,
-      ),
-      body: Column(
-        children: <Widget>[
-          Container(
-            padding: EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.1),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                    child: TextField(
-                  controller: _toDoController,
-                  decoration: InputDecoration(
-                    labelText: "Item a ser comprado",
-                    labelStyle: TextStyle(color: Colors.blueAccent),
-                    errorText:
-                        _toDoController.text.isEmpty ? 'Informar item' : null,
-                  ),
-                  onChanged: (value) {
-                    setState(() {});
-                  },
-                )),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent),
-                  child: Text("ADD", style: TextStyle(color: Colors.white)),
-                  onPressed: _addToDo,
-                )
-              ],
-            ),
+    return SafeArea(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            "Lista de Compras",
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          Expanded(
-              child: RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView.builder(
-                      padding: EdgeInsets.only(top: 10.0),
-                      itemCount: _toDoList.length,
-                      itemBuilder: buildItem))),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent),
-                  child: Text("Limpar tudo",
-                      style: TextStyle(color: Colors.white)),
-                  onPressed: showDeleteListConfirmationDialog,
-                )
-              ],
-              mainAxisAlignment: MainAxisAlignment.end,
+          backgroundColor: Colors.blueAccent,
+          centerTitle: true,
+        ),
+        body: Column(
+          children: <Widget>[
+            Container(
+              padding: EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.1),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                      child: TextField(
+                        controller: _toDoController,
+                        decoration: InputDecoration(
+                          labelText: "Item a ser comprado",
+                          labelStyle: TextStyle(color: Colors.blueAccent),
+                          errorText:
+                          _toDoController.text.isEmpty ? 'Informar item' : null,
+                        ),
+                        onChanged: (text) {
+                          setState(() {
+                            _isComposing = text.isNotEmpty;
+                          });
+                        },
+                        onSubmitted: (text) {
+                          _saveData(text);
+                          _reset();
+                        },
+                      )),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent),
+                    child: Text("ADD", style: TextStyle(color: Colors.white)),
+                    onPressed: _isComposing ? () {
+                      _saveData(_toDoController.text);
+
+                      _reset();
+                    } : null,
+                  )
+                ],
+              ),
             ),
-          )
-        ],
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('listacompras')
+                    .orderBy('ok')
+                    .orderBy('title')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  switch (snapshot.connectionState) {
+                    case ConnectionState.none:
+                    case ConnectionState.waiting:
+                      return Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    default:
+                      if (snapshot.hasData){
+                        documents = snapshot.data.docs;} // bug qdo ordena e apaga todos registros um por um o
+                      //documents = snapshot.data.docs;      // ultimo não apaga da tela, pode ser o setstate
+
+                      return ListView.builder(
+                          itemCount: documents.length,
+                          itemBuilder: buildItem
+                      );
+                  }
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent),
+                    child: Text("Limpar tudo",
+                        style: TextStyle(color: Colors.white)),
+                    onPressed: showDeleteListConfirmationDialog,
+                  )
+                ],
+                mainAxisAlignment: MainAxisAlignment.end,
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
 
   Widget buildItem(BuildContext context, int index) {
     return Dismissible(
-      key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
+      key: Key(DateTime
+          .now()
+          .millisecondsSinceEpoch
+          .toString()),
       background: Container(
         color: Colors.red,
         child: Align(
@@ -133,25 +154,31 @@ class _HomeState extends State<Home> {
       ),
       direction: DismissDirection.endToStart,
       child: CheckboxListTile(
-        title: Text(_toDoList[index]["title"]),
-        value: _toDoList[index]["ok"],
+        title: Text(documents[index]["title"]),
+        value: documents[index]["ok"],
         secondary: CircleAvatar(
-          child: Icon(_toDoList[index]["ok"] ? Icons.check : Icons.error),
+          child: Icon(documents[index]["ok"] ? Icons.check : Icons.error),
         ),
         onChanged: (c) {
           setState(() {
-            _toDoList[index]["ok"] = c;
-            _saveData();
+            FirebaseFirestore.instance.collection('listacompras')
+                .doc(documents[index].id)
+                .update({'ok': c});
           });
         },
       ),
       onDismissed: (direction) {
         setState(() {
-          _lastRemoved = Map.from(_toDoList[index]);
-          _lastRemovedPos = index;
-          _toDoList.removeAt(index);
+          _lastRemoved = Map.from(documents[index].data());
+          _lastRemovedPos = documents[index].id;
 
-          _saveData();
+
+          //forcei um setstate aqui pra ver se resolvia o bug da deleção do ultimo registro, mas não funfou
+          setState(() {
+            FirebaseFirestore.instance.collection('listacompras')
+                .doc(_lastRemovedPos).delete();
+          });
+
 
           final snack = SnackBar(
             content: Text("Item \"${_lastRemoved["title"]}\" removido!"),
@@ -159,8 +186,10 @@ class _HomeState extends State<Home> {
                 label: "Desfazer",
                 onPressed: () {
                   setState(() {
-                    _toDoList.insert(_lastRemovedPos, _lastRemoved);
-                    _saveData();
+                    FirebaseFirestore.instance.collection('listacompras')
+                        .doc(_lastRemovedPos)
+                        .set({'title': _lastRemoved["title"],
+                      'ok': _lastRemoved["ok"]});
                   });
                 }),
             duration: Duration(seconds: 3),
@@ -175,63 +204,45 @@ class _HomeState extends State<Home> {
   void showDeleteListConfirmationDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Limpar Tudo?'),
-        content: Text('Voce tem certeza que deseja apagar todos os itens?'),
-        actions: [
-          TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-              child: Text('Cancelar')),
-          TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                deleteAllTodos();
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.blueAccent),
-              child: Text('Limpar Tudo')),
-        ],
-      ),
+      builder: (context) =>
+          AlertDialog(
+            title: Text('Limpar Tudo?'),
+            content: Text('Voce tem certeza que deseja apagar todos os itens?'),
+            actions: [
+              TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent),
+                  child: Text('Cancelar')),
+              TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    deleteAllTodos();
+                  },
+                  style: TextButton.styleFrom(
+                      foregroundColor: Colors.blueAccent),
+                  child: Text('Limpar Tudo')),
+            ],
+          ),
     );
   }
 
-  void deleteAllTodos(){
-    setState(() {
-      _toDoList.clear();
+  void deleteAllTodos() {
+    setState(() async {
+      QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('listacompras')
+          .get();
+      snapshot.docs.forEach((e) {
+        e.reference.delete();
+      });
     });
   }
 
-  Future<File> _getFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return File("${directory.path}/data.json");
-  }
-
-  Future<File> _saveData() async {
-    //ordenando a lista antes de salvar
-    _toDoList.sort((a, b) {
-      if (a["ok"] == true && !b["ok"] == true) {
-        return 1;
-      } else if (!a["ok"] == true && b["ok"] == true) {
-        return -1;
-      } else {
-        return a["title"].compareTo(b["title"]);
-      }
+  void _saveData(String title) {
+    FirebaseFirestore.instance.collection('listacompras').doc().set({
+      'title': _toDoController.text,
+      'ok': false
     });
-    String data = json.encode(_toDoList);
-
-    final file = await _getFile();
-    return file.writeAsString(data);
-  }
-
-  Future<String> _readData() async {
-    try {
-      final file = await _getFile();
-
-      return file.readAsString();
-    } catch (e) {
-      return null;
-    }
   }
 }

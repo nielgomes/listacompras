@@ -1,8 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.danielgomes.listacompras2">
+    <uses-permission android:name="android.permission.INTERNET"/>
    <application
-        android:label="listacompras2"
-        android:name="${applicationName}"
+        android:label="lista compras"
+        android:name="androidx.multidex.MultiDexApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
