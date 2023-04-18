@@ -45,3 +45,6 @@ app.*.map.json
 
 #google configs
 /android/app/google-services.json
+
+#parse configs
+/lib/configs/configparse.dart

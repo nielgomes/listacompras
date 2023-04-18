@@ -28,14 +28,20 @@ dependencies:
   path_provider: ^2.0.14
   convert: ^3.1.1        #importando o pacote convert para uso com Json
   flutter_launcher_icons: ^0.12.0 #importanto os icones para usar na publicacao do app
-  cloud_firestore: ^4.4.5
-  google_sign_in: ^6.0.2
-  firebase_auth: ^4.3.0
-  firebase_core: ^2.8.0
+  cloud_firestore: ^4.5.0 #uso com Firebase
+  #google_sign_in: ^6.0.2 #login Google
+  firebase_auth: ^4.4.0 #uso com Firebase
+  firebase_core: ^2.8.0 #uso com Firebase
+  mobx: ^2.1.4
+  flutter_mobx: ^2.0.6+5
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  parse_server_sdk_flutter: ^4.0.0
+  mobx_codegen: ^2.2.0
+  build_runner: ^2.3.3
 
 
 # For information on the generic Dart part of this file, see the
