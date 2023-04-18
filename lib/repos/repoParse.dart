@@ -147,9 +147,9 @@ class Repo extends StatefulWidget implements Cruds {
   }
 
   @override
-  void showDeleteListConfirmationDialog() {
+  void showDeleteListConfirmationDialog(context) {
     showDialog(
-      context: home.context,
+      context: context,
       builder: (context) => AlertDialog(
         title: Text('Limpar Tudo?'),
         content: Text('Voce tem certeza que deseja apagar todos os itens?'),

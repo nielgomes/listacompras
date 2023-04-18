@@ -128,7 +128,7 @@ class _HomeState extends State<Home> {
                             child: Text("Limpar",
                                 style: TextStyle(color: Colors.white)),
                             onPressed: () {
-                              repo.showDeleteListConfirmationDialog();
+                              repo.showDeleteListConfirmationDialog(context);
                             },
                           ),
                         )
