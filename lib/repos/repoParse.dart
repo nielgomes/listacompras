@@ -51,7 +51,8 @@ class Repo extends StatefulWidget implements Cruds {
       apiResponse.results.forEach((element) {
         print('######### upDateResponse() #########  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
       });
-      //buildHomeList.setStream(apiResponse);
+      //atualiza o documents
+      buildHomeList.setDocuments(apiResponse.results);
       return apiResponse;
     }
 
@@ -66,7 +67,24 @@ class Repo extends StatefulWidget implements Cruds {
       });
       upDateResponse(apiResponse);
     },
+    );
 
+    listen.on(LiveQueryEvent.create, (value) async {
+      apiResponse = await value.getAll();
+      apiResponse.results.forEach((element) {
+        print('####Dentro do Liste ON ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+      });
+      upDateResponse(apiResponse);
+    },
+    );
+
+    listen.on(LiveQueryEvent.delete, (value) async {
+      apiResponse = await value.getAll();
+      apiResponse.results.forEach((element) {
+        print('####Dentro do Liste ON ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+      });
+      upDateResponse(apiResponse);
+    },
     );
 
     apiResponse.results.forEach((element) {
@@ -189,6 +207,7 @@ class _RepoState extends State<Repo> {
   @override
   void initState() {
     _stream = repo.queryLive().asBroadcastStream();
+    buildHomeList.setDocuments;
     super.initState();
   }
 
@@ -198,24 +217,27 @@ class _RepoState extends State<Repo> {
   BuildHomeList buildHomeList = BuildHomeList();
 
   Widget build(BuildContext context) {
-    return StreamBuilder(
-      stream: _stream,
-      builder: (context, snapshot) {
-        switch (snapshot.connectionState) {
-          case ConnectionState.none:
-          case ConnectionState.waiting:
-            return Center(
-              child: CircularProgressIndicator(),
-            );
-          default:
-            if (snapshot.hasData) {
-              buildHomeList.setDocuments(snapshot.data);
-            }
-            return ListView.builder(
-                itemCount: buildHomeList.documents.length, itemBuilder: buildItem);
-        }
-      },
-    );
+    return Observer(
+        builder: (_){
+          return StreamBuilder(
+            stream: _stream,
+            builder: (context, snapshot) {
+              switch (snapshot.connectionState) {
+                case ConnectionState.none:
+                case ConnectionState.waiting:
+                  return Center(
+                    child: CircularProgressIndicator(),
+                  );
+                default:
+                  if (snapshot.hasData) {
+                    buildHomeList.setDocuments(snapshot.data);
+                  }
+                  return ListView.builder(
+                      itemCount: buildHomeList.documents.length, itemBuilder: buildItem);
+              }
+            },
+          );
+        });
   }
 
   Widget buildItem(BuildContext context, int index) {
