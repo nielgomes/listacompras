@@ -17,6 +17,11 @@ void main() async {
   InitParse initparse = InitParse();
   await initparse.initParse();
 
+  //inicializando o listen do stream
+  WidgetsFlutterBinding.ensureInitialized();
+  Repo repo = Repo();
+  repo.listenStream();
+
 
   runApp(MaterialApp(home: Home(),
       routes: {

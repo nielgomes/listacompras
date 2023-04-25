@@ -25,6 +25,22 @@ mixin _$BuildHomeList on _BuildHomeList, Store {
     });
   }
 
+  final _$streamAtom =
+      Atom(name: '_BuildHomeList.stream', context: mainContext);
+
+  @override
+  Stream<List<ParseObject>> get stream {
+    _$streamAtom.reportRead();
+    return super.stream;
+  }
+
+  @override
+  set stream(Stream<List<ParseObject>> value) {
+    _$streamAtom.reportWrite(value, super.stream, () {
+      super.stream = value;
+    });
+  }
+
   final _$_BuildHomeListActionController =
       ActionController(name: '_BuildHomeList', context: mainContext);
 
@@ -40,9 +56,21 @@ mixin _$BuildHomeList on _BuildHomeList, Store {
   }
 
   @override
+  void setStream(Stream<List<ParseObject>> response) {
+    final _$actionInfo = _$_BuildHomeListActionController.startAction(
+        name: '_BuildHomeList.setStream');
+    try {
+      return super.setStream(response);
+    } finally {
+      _$_BuildHomeListActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
   String toString() {
     return '''
-documents: ${documents}
+documents: ${documents},
+stream: ${stream}
     ''';
   }
 }

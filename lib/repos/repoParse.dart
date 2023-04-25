@@ -10,94 +10,91 @@ class Repo extends StatefulWidget implements Cruds {
 
   final String sourceCollection = 'listacompras';
 
+  //consulta ordenada
+  final QueryBuilder<ParseObject> query =
+      QueryBuilder<ParseObject>(ParseObject('listacompras'))
+        ..orderByAscending('ok')
+        ..orderByAscending('section')
+        ..orderByAscending('title');
+
   BuildHomeList buildHomeList = BuildHomeList();
 
-  Stream<List<ParseObject>> queryLive() async* {
+  ParseResponse apiResponse;
 
+  Stream<List<ParseObject>> queryLive() async* {
     final parseObject = ParseObject(sourceCollection);
 
-    final QueryBuilder<ParseObject> query =
-    QueryBuilder<ParseObject>(parseObject)
-      ..orderByAscending('ok')
-      ..orderByAscending('section')
-      ..orderByAscending('title');
+    apiResponse = await query.query();
 
-    //final LiveQueryClient client = LiveQueryClient();
+    apiResponse.results.forEach((element) {
+      print(
+          '****** antes do yield ###########  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+    });
+    yield apiResponse.results;
+  }
 
-    final LiveQuery liveQuery = LiveQuery();
-    //liveQuery.client = client;
-/*
-    final t = client.subscribe(query).asStream().cast().map((event) => event
-        .results
-        .map((e) => [e.get<String>('title'), e.get<bool>('ok')].toList()));*/
-
-    //t.forEach((element) {
-    //print('aqui esta a impressão ###################  ${j}');
-    //});
-
-    /*final p = liveQuery.client
-        .subscribe(query).asStream().cast()
-        .map((event) => event.results.cast<ParseObject>());*/
-    final listen = await liveQuery.client
-        .subscribe(query);
-
-    ParseResponse apiResponse = await query.query();
-
-    //buildHomeList.setStream(apiResponse);
-
-    ParseResponse upDateResponse(ParseResponse response) {
-      apiResponse = response;
-
-      apiResponse.results.forEach((element) {
-        print('######### upDateResponse() #########  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
-      });
-      //atualiza o documents
-      buildHomeList.setDocuments(apiResponse.results);
-      return apiResponse;
-    }
-
+  //listen do stream
+  void listenStream() async {
     //aqui consegui obter o resultado de listen no console, mas ainda não funciando em tempo real
     // quse funcionando, mas ainda não atualiza a tela
 
-    listen.on(LiveQueryEvent.update, (value) async {
+    final LiveQuery liveQuery = LiveQuery();
 
-      apiResponse = await value.getAll();
-      apiResponse.results.forEach((element) {
-        print('####Dentro do Liste ON ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
-      });
-      upDateResponse(apiResponse);
-    },
+    final listen = await liveQuery.client.subscribe(query);
+
+    //escuta o evento update chamada no main.dart
+    listen.on(
+      LiveQueryEvent.update,
+      (value) async {
+        apiResponse = await value.getAll();
+        apiResponse.results.forEach((element) {
+          print(
+              '####Dentro do Liste ON UPDATE ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+        });
+        upDateResponse(apiResponse);
+      },
     );
 
-    listen.on(LiveQueryEvent.create, (value) async {
-      apiResponse = await value.getAll();
-      apiResponse.results.forEach((element) {
-        print('####Dentro do Liste ON ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
-      });
-      upDateResponse(apiResponse);
-    },
+    //escuta o evento create
+    listen.on(
+      LiveQueryEvent.create,
+      (value) async {
+        apiResponse = await value.getAll();
+        apiResponse.results.forEach((element) {
+          print(
+              '####Dentro do Liste ON CREATE ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+        });
+        upDateResponse(apiResponse);
+      },
     );
 
-    listen.on(LiveQueryEvent.delete, (value) async {
-      apiResponse = await value.getAll();
-      apiResponse.results.forEach((element) {
-        print('####Dentro do Liste ON ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
-      });
-      upDateResponse(apiResponse);
-    },
+    //escuta o evento delete
+    listen.on(
+      LiveQueryEvent.delete,
+      (value) async {
+        apiResponse = await value.getAll();
+        apiResponse.results.forEach((element) {
+          print(
+              '####Dentro do Liste ON DELETE ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+        });
+        upDateResponse(apiResponse);
+      },
     );
-
-    apiResponse.results.forEach((element) {
-      print('****** antes do yield ###########  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
-    });
-    yield apiResponse.results;
-
-    /*client.subscribe(query).asStream().cast().map((event) => event
-        .results
-        .map((e) => [e.get<String>('title'), e.get<bool>('ok')]
-        .toList()));*/
   }
 
+  //atualiza o buildHomeList.documents
+  ParseResponse upDateResponse(ParseResponse response) {
+    apiResponse = response;
+
+    apiResponse.results.forEach((element) {
+      print(
+          '######### upDateResponse() #########  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+    });
+    //atualiza o documents e atualiza o stream
+    buildHomeList.setDocuments(apiResponse.results);
+    buildHomeList.setStream(repo.queryLive().asBroadcastStream());
+    return apiResponse;
+  }
 
   @override
   State<Repo> createState() => _RepoState();
@@ -113,7 +110,8 @@ class Repo extends StatefulWidget implements Cruds {
       } else {
         await Future.delayed(Duration(milliseconds: 800));
         i = 0;
-      };
+      }
+      ;
       i++;
     }
   }
@@ -152,8 +150,8 @@ class Repo extends StatefulWidget implements Cruds {
     //snapshotOut.docs.forEach((doc) async {
     final listacompras = ParseObject(sourceCollection);
     listacompras
-    //    ..set<String>('title', doc['title'])
-    //   ..set<bool>('ok', doc['ok'])
+      //    ..set<String>('title', doc['title'])
+      //   ..set<bool>('ok', doc['ok'])
       ..set<String>('section', 'oo');
     await listacompras.save();
     //});
@@ -202,47 +200,48 @@ class Repo extends StatefulWidget implements Cruds {
 class _RepoState extends State<Repo> {
   //bool _isComposing = false;
 
-  Stream<List<ParseObject>> _stream;
+  Map<String, dynamic> _lastRemoved;
+  String _lastRemovedPos;
+
+  BuildHomeList buildHomeList = BuildHomeList();
+
+  Repo repo = Repo();
 
   @override
   void initState() {
-    _stream = repo.queryLive().asBroadcastStream();
-    buildHomeList.setDocuments;
+    buildHomeList.setStream(repo.queryLive().asBroadcastStream());
+
     super.initState();
   }
 
-  Map<String, dynamic> _lastRemoved;
-  String _lastRemovedPos;
-  Repo repo = Repo();
-  BuildHomeList buildHomeList = BuildHomeList();
-
   Widget build(BuildContext context) {
-    return Observer(
-        builder: (_){
-          return StreamBuilder(
-            stream: _stream,
-            builder: (context, snapshot) {
-              switch (snapshot.connectionState) {
-                case ConnectionState.none:
-                case ConnectionState.waiting:
-                  return Center(
-                    child: CircularProgressIndicator(),
-                  );
-                default:
-                  if (snapshot.hasData) {
-                    buildHomeList.setDocuments(snapshot.data);
-                  }
-                  return ListView.builder(
-                      itemCount: buildHomeList.documents.length, itemBuilder: buildItem);
+    return Observer(builder: (context) {
+      return StreamBuilder(
+        stream: buildHomeList.stream,
+        builder: (context, snapshot) {
+          switch (snapshot.connectionState) {
+            case ConnectionState.none:
+            case ConnectionState.waiting:
+              return Center(
+                child: CircularProgressIndicator(),
+              );
+            default:
+              if (snapshot.hasData) {
+                //aqui ele carrega a lista na variavel documents a primeira vez
+                buildHomeList.setDocuments(snapshot.data);
               }
-            },
-          );
-        });
+              return ListView.builder(
+                  itemCount: buildHomeList.documents.length,
+                  itemBuilder: buildItem);
+          }
+        },
+      );
+    });
   }
 
   Widget buildItem(BuildContext context, int index) {
-    return Observer (
-      builder: (_) => Dismissible(
+    return Observer(
+      builder: (context) => Dismissible(
         key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
         background: Container(
           color: Colors.red,
@@ -256,7 +255,9 @@ class _RepoState extends State<Repo> {
           title: Text(buildHomeList.documents[index]["title"]),
           value: buildHomeList.documents[index]["ok"],
           secondary: CircleAvatar(
-            child: Icon(buildHomeList.documents[index]["ok"] ? Icons.check : Icons.error),
+            child: Icon(buildHomeList.documents[index]["ok"]
+                ? Icons.check
+                : Icons.error),
           ),
           onChanged: (c) {
             setState(() {

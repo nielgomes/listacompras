@@ -8,11 +8,9 @@ import 'package:listacompras2/pages/home.dart';
 part 'buildHomeList.g.dart';
 
 class BuildHomeList = _BuildHomeList with _$BuildHomeList;
+Repo repo = Repo();
 
 abstract class _BuildHomeList with Store {
-
-  //Repo repo = Repo();
-
 
   _BuildHomeList() {
     autorun((_) {
@@ -30,4 +28,11 @@ abstract class _BuildHomeList with Store {
     documents = response;
   }
 
+  @observable
+  Stream<List<ParseObject>> stream = Stream.empty();
+
+  @action
+  void setStream(Stream<List<ParseObject>> response) {
+    stream = response;
+  }
 }
