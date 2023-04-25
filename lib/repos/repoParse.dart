@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:listacompras2/pages/home.dart';
 import 'package:listacompras2/repos/cruds.dart';
 import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
+import 'package:listacompras2/mobx/buildHomeList.dart';
+import 'package:flutter_mobx/flutter_mobx.dart';
 
 class Repo extends StatefulWidget implements Cruds {
   //const Repo({Key key, this.initFirebase}) : super(key: key);
 
   final String sourceCollection = 'listacompras';
+
+  BuildHomeList buildHomeList = BuildHomeList();
 
   Stream<List<ParseObject>> queryLive() async* {
 
@@ -39,12 +43,15 @@ class Repo extends StatefulWidget implements Cruds {
 
     ParseResponse apiResponse = await query.query();
 
+    //buildHomeList.setStream(apiResponse);
+
     ParseResponse upDateResponse(ParseResponse response) {
       apiResponse = response;
 
       apiResponse.results.forEach((element) {
         print('######### upDateResponse() #########  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
       });
+      //buildHomeList.setStream(apiResponse);
       return apiResponse;
     }
 
@@ -185,10 +192,10 @@ class _RepoState extends State<Repo> {
     super.initState();
   }
 
-  List<dynamic> documents;
   Map<String, dynamic> _lastRemoved;
   String _lastRemovedPos;
   Repo repo = Repo();
+  BuildHomeList buildHomeList = BuildHomeList();
 
   Widget build(BuildContext context) {
     return StreamBuilder(
@@ -202,74 +209,76 @@ class _RepoState extends State<Repo> {
             );
           default:
             if (snapshot.hasData) {
-              documents = snapshot.data;
+              buildHomeList.setDocuments(snapshot.data);
             }
             return ListView.builder(
-                itemCount: documents.length, itemBuilder: buildItem);
+                itemCount: buildHomeList.documents.length, itemBuilder: buildItem);
         }
       },
     );
   }
 
   Widget buildItem(BuildContext context, int index) {
-    return Dismissible(
-      key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
-      background: Container(
-        color: Colors.red,
-        child: Align(
-          alignment: Alignment(0.9, 0.0),
-          child: Icon(Icons.delete, color: Colors.white, size: 26),
+    return Observer (
+      builder: (_) => Dismissible(
+        key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
+        background: Container(
+          color: Colors.red,
+          child: Align(
+            alignment: Alignment(0.9, 0.0),
+            child: Icon(Icons.delete, color: Colors.white, size: 26),
+          ),
         ),
-      ),
-      direction: DismissDirection.endToStart,
-      child: CheckboxListTile(
-        title: Text(documents[index]["title"]),
-        value: documents[index]["ok"],
-        secondary: CircleAvatar(
-          child: Icon(documents[index]["ok"] ? Icons.check : Icons.error),
-        ),
-        onChanged: (c) {
-          setState(() {
-            /*FirebaseFirestore.instance
+        direction: DismissDirection.endToStart,
+        child: CheckboxListTile(
+          title: Text(buildHomeList.documents[index]["title"]),
+          value: buildHomeList.documents[index]["ok"],
+          secondary: CircleAvatar(
+            child: Icon(buildHomeList.documents[index]["ok"] ? Icons.check : Icons.error),
+          ),
+          onChanged: (c) {
+            setState(() {
+              /*FirebaseFirestore.instance
                 .collection(repo.sourceCollection)
                 .doc(documents[index].id)
                 .update({'ok': c});*/
-          });
-        },
-      ),
-      onDismissed: (direction) {
-        setState(() {
-          _lastRemoved = Map.from(documents[index].data());
-          _lastRemovedPos = documents[index].id;
-
+            });
+          },
+        ),
+        onDismissed: (direction) {
           setState(() {
-            /*FirebaseFirestore.instance
+            _lastRemoved = Map.from(buildHomeList.documents[index].data());
+            _lastRemovedPos = buildHomeList.documents[index].id;
+
+            setState(() {
+              /*FirebaseFirestore.instance
                 .collection(repo.sourceCollection)
                 .doc(_lastRemovedPos)
                 .delete();*/
-          });
+            });
 
-          final snack = SnackBar(
-            content: Text("Item \"${_lastRemoved["title"]}\" removido!"),
-            action: SnackBarAction(
-                label: "Desfazer",
-                onPressed: () {
-                  setState(() {
-                    /*FirebaseFirestore.instance
+            final snack = SnackBar(
+              content: Text("Item \"${_lastRemoved["title"]}\" removido!"),
+              action: SnackBarAction(
+                  label: "Desfazer",
+                  onPressed: () {
+                    setState(() {
+                      /*FirebaseFirestore.instance
                         .collection(repo.sourceCollection)
                         .doc(_lastRemovedPos)
                         .set({
                       'title': _lastRemoved["title"],
                       'ok': _lastRemoved["ok"]
                     });*/
-                  });
-                }),
-            duration: Duration(seconds: 3),
-          );
-          ScaffoldMessenger.of(context).removeCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(snack);
-        });
-      },
+                    });
+                  }),
+              duration: Duration(seconds: 3),
+            );
+            ScaffoldMessenger.of(context).removeCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(snack);
+          });
+        },
+      ),
     );
   }
 }
