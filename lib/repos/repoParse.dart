@@ -80,6 +80,47 @@ class Repo extends StatefulWidget implements Cruds {
         upDateResponse(apiResponse);
       },
     );
+    //escuta o evento enter
+    listen.on(
+      LiveQueryEvent.enter,
+          (value) async {
+        apiResponse = await value.getAll();
+        if (apiResponse.results != null) {
+          apiResponse.results.forEach((element) {
+            print(
+                '####Dentro do Listen ON enter ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+          });
+        }
+        upDateResponse(apiResponse);
+      },
+    );
+    //escuta o evento leave
+    listen.on(
+      LiveQueryEvent.leave,
+          (value) async {
+        apiResponse = await value.getAll();
+        if (apiResponse.results != null) {
+          apiResponse.results.forEach((element) {
+            print(
+                '####Dentro do Listen ON Leave ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+          });
+        }
+        upDateResponse(apiResponse);
+      },
+    );
+    listen.on(
+        LiveQueryEvent.error,
+            (value) async {
+          apiResponse = await value.getAll();
+          if (apiResponse.results != null) {
+            apiResponse.results.forEach((element) {
+              print(
+                  '####Dentro do Listen ON Error ###################  ${element.get<String>('title')} ::: ${element.get<bool>('ok')}');
+            });
+          }
+          upDateResponse(apiResponse);
+          },
+    );
   }
 
   //atualiza o buildHomeList.documents
