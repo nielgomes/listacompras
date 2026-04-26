@@ -1,0 +1,72 @@
+# ============================================
+# Docker Compose - Lista Compras
+# ============================================
+# Ambiente completo com:
+# - Flutter SDK para desenvolvimento
+# - Chromium para Flutter Web
+#
+# Uso:
+# cp .env.example .env
+# Edite .env com suas credenciais do Firebase
+#
+# Iniciar ambiente:
+# docker compose up -d
+#
+# Acessar container Flutter:
+# docker compose exec flutter bash
+# ============================================
+
+services:
+  # ============================================
+  # Flutter Development Environment
+  # ============================================
+  flutter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lista_compras_flutter
+    stdin_open: true  # Mantém STDIN aberto
+    tty: true  # Aloca pseudo-TTY
+
+    volumes:
+      # Montar código fonte completo
+      - .:/workspace/listacompras
+      # Cache do Flutter (persistente entre execuções)
+      - flutter_cache:/root/.pub-cache
+      - gradle_cache:/root/.gradle
+
+    environment:
+      - FLUTTER_PROJECT_DIR=/workspace/listacompras
+      # Variáveis de ambiente para Firebase
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-}
+      - FIREBASE_API_KEY=${FIREBASE_API_KEY:-}
+      - FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN:-}
+      - FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-}
+      - FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID:-}
+      - FIREBASE_APP_ID=${FIREBASE_APP_ID:-}
+
+    ports:
+      - "50000:50000"  # Flutter debug
+      - "4200:4200"    # Flutter Web Server
+      - "8080:8080"    # Flutter Web Server (web-server mode)
+
+    shm_size: '2gb'  # Memória compartilhada para Chrome/Chromium
+
+    networks:
+      - lista_compras_network
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  lista_compras_network:
+    driver: bridge
+
+# ============================================
+# Volumes Persistentes
+# ============================================
+volumes:
+  flutter_cache:
+    name: lista_compras_flutter_cache
+  gradle_cache:
+    name: lista_compras_gradle_cache

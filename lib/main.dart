@@ -1,31 +1,48 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:listacompras2/pages/home.dart';
 import 'package:listacompras2/pages/sections.dart';
-import 'package:listacompras2/repos/initDataBases.dart';
-import 'package:listacompras2/repos/repoParse.dart';
+import 'package:listacompras2/services/firestore_lists_service.dart';
 
-void main() async {
-  //inicializando o Firebase
-  WidgetsFlutterBinding.ensureInitialized();
-  InitFirebase initFirebase = InitFirebase();
-  await initFirebase.initFirebase();
+void main() {
+  // Capturar erros não tratados
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  //inicializando o Parse
-  WidgetsFlutterBinding.ensureInitialized();
-  InitParse initparse = InitParse();
-  await initparse.initParse();
+    // Carregar variáveis de ambiente
+    await dotenv.load(fileName: '.env');
 
-  //inicializando o listen do stream
-  WidgetsFlutterBinding.ensureInitialized();
-  Repo repo = Repo();
-  repo.listenStream();
+    // Inicializar Firebase
+    try {
+      await FirestoreListsService.instance.initialize();
+    } catch (e, stackTrace) {
+      print('❌ Erro crítico ao inicializar Firebase: $e');
+      print('Stack trace: $stackTrace');
+      // Não rethrow para permitir que o app inicie e mostre erro na UI
+    }
 
+    runApp(const MyApp());
+  }, (error, stackTrace) {
+    print('❌ Erro não tratado no app: $error');
+    print('Stack trace: $stackTrace');
+  });
+}
 
-  runApp(MaterialApp(home: Home(),
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Lista de Compras',
+      debugShowCheckedModeBanner: false,
+      initialRoute: '/',
       routes: {
-        '/sections': (context) => Sections(),
+        '/': (context) => const Home(),
+        '/sections': (context) => const Sections(),
       },
-      debugShowCheckedModeBanner: false));
+    );
+  }
 }

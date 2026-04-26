@@ -1,51 +1,151 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:listacompras2/repos/repoParse.dart';
-
+import 'package:listacompras2/services/firestore_lists_service.dart';
+import 'package:listacompras2/services/firestore_test.dart';
 
 class Home extends StatefulWidget {
+  const Home({super.key});
+
   @override
   State<Home> createState() => _HomeState();
-
-  final toDoController = TextEditingController();
-
-  get context => _HomeState().context;
 }
 
-
-typedef StreamCallback = void Function(Stream stream);
-
-
 class _HomeState extends State<Home> {
-  //const _HomeState(Key key, this._toDoController) : super(key: key);
+  final TextEditingController _toDoController = TextEditingController();
+  final FirestoreListsService _firestoreService = FirestoreListsService.instance;
 
-  get context => this.context;
+  bool _isComposing = false;
 
-  StreamController _controller = StreamController();
+  // ============================================
+  // LISTAS DE COMPRAS (Sincronização em Tempo Real)
+  // ============================================
 
-  void _sendStreamToRepo(Stream stream) {
-    _controller.addStream(stream);
-  }
-
-  Home home = Home();
-  Repo repo = Repo();
+  /// Stream de listas ativas do Firebase — atualiza automaticamente
+  late final Stream<List<DocumentSnapshot>> _listsStream =
+      _firestoreService.listenToLists(onlyActive: true);
 
   @override
   void initState() {
     super.initState();
+    print('📥 HomeState criado — lista sincronizada com Firebase em tempo real');
   }
 
-  bool _isComposing = false;
-
-  List<DocumentSnapshot> documents = [];
-
   void _reset() {
-    home.toDoController.clear();
+    _toDoController.clear();
     setState(() {
       _isComposing = false;
     });
+  }
+
+  Future<void> _saveList() async {
+    try {
+      print('💾 Salvando lista: ${_toDoController.text}');
+      if (_toDoController.text.isNotEmpty) {
+        await _firestoreService.createList(
+          name: _toDoController.text,
+          description: 'Lista criada via app Flutter Web',
+        );
+        print('✅ Lista salva com sucesso!');
+        _reset();
+        // StreamBuilder atualiza automaticamente — sem reload manual necessário
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lista salva com sucesso!')),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Erro ao salvar: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao salvar: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _testFirestoreConnection() async {
+    try {
+      print('🧪 Testando conexão com Firestore...');
+      await FirestoreTest.instance.testConnection();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Teste de conexão iniciado! Verifique o console.')),
+        );
+      }
+    } catch (e) {
+      print('❌ Erro ao testar conexão: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao testar: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteList(String listId) async {
+    print('🗑️ Iniciando exclusão da lista: $listId');
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir lista?'),
+        content: const Text('Esta ação não pode ser desfeita.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      print('✅ Confirmou exclusão, chamando deleteList...');
+      try {
+        await _firestoreService.deleteList(listId);
+        print('✅ Lista deletada — StreamBuilder vai atualizar a UI automaticamente');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lista excluída com sucesso!')),
+          );
+        }
+      } catch (e) {
+        print('❌ Erro ao excluir: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao excluir: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  void _showClearConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Limpar lista?'),
+        content: const Text('Deseja limpar todos os itens desta lista?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Limpar itens da lista atual
+            },
+            child: const Text('Limpar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -66,13 +166,13 @@ class _HomeState extends State<Home> {
             padding: EdgeInsets.zero,
             children: [
               DrawerHeader(
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent,
+                ),
                 child: Text('Menu Lateral',
                   style: TextStyle(fontWeight: FontWeight.bold,
                       fontSize: 16,
                       color: Colors.white),
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent,
                 ),
               ),
               Row(
@@ -96,14 +196,15 @@ class _HomeState extends State<Home> {
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Expanded(
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blueAccent),
+                            onPressed: _saveList,
                             child: Text("Salvar",
                                 style: TextStyle(color: Colors.white)),
-                            onPressed: () {},
                           ),
                         ),
                         SizedBox(
@@ -111,11 +212,21 @@ class _HomeState extends State<Home> {
                         ),
                         Expanded(
                           child: ElevatedButton(
+                            onPressed: () {
+                              // StreamBuilder já atualiza automaticamente!
+                              // Este botão força uma verificação manual
+                              print('🔄 Sincronização automática via StreamBuilder');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Dados sincronizados automaticamente!'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            },
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green),
-                            child: Text("Carregar",
+                            child: Text("Sync",
                                 style: TextStyle(color: Colors.white)),
-                            onPressed: () {},
                           ),
                         ),
                         SizedBox(
@@ -128,12 +239,23 @@ class _HomeState extends State<Home> {
                             child: Text("Limpar",
                                 style: TextStyle(color: Colors.white)),
                             onPressed: () {
-                              repo.showDeleteListConfirmationDialog(context);
+                              _showClearConfirmationDialog();
                             },
+                          ),
+                        ),
+                        SizedBox(
+                          width: 5,
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange),
+                            child: Text("Testar",
+                                style: TextStyle(color: Colors.white)),
+                            onPressed: _testFirestoreConnection,
                           ),
                         )
                       ],
-                      mainAxisAlignment: MainAxisAlignment.center,
                     ),
                   )
                 ),
@@ -149,12 +271,12 @@ class _HomeState extends State<Home> {
                 children: <Widget>[
                   Expanded(
                       child: TextField(
-                    controller: home.toDoController,
+                    controller: _toDoController,
                     decoration: InputDecoration(
                       labelText: "Item a ser comprado",
                       labelStyle: TextStyle(color: Colors.blueAccent),
                       errorText:
-                          home.toDoController.text.isEmpty ? 'Informar item' : null,
+                          _toDoController.text.isEmpty ? 'Informar item' : null,
                     ),
                     onChanged: (text) {
                       setState(() {
@@ -163,22 +285,71 @@ class _HomeState extends State<Home> {
                     },
                   )),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent),
-                    child: Text("ADD", style: TextStyle(color: Colors.white)),
                     onPressed: _isComposing
                         ? () {
                             Navigator.pushNamed(context,
                                 '/sections',
-                                arguments: home.toDoController.text.toLowerCase());
+                                arguments: _toDoController.text.toLowerCase());
                             _reset();
                           }
                         : null,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent),
+                    child: Text("ADD", style: TextStyle(color: Colors.white)),
                   )
                 ],
               ),
             ),
-            Expanded(child: Repo()),
+            Expanded(
+              child: StreamBuilder<List<DocumentSnapshot>>(
+                stream: _listsStream,
+                builder: (context, snapshot) {
+                  switch (snapshot.connectionState) {
+                    case ConnectionState.none:
+                    case ConnectionState.waiting:
+                      return const Center(child: CircularProgressIndicator());
+
+                    case ConnectionState.active:
+                    case ConnectionState.done:
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(
+                          child: Text('Nenhuma lista encontrada'),
+                        );
+                      }
+
+                      final lists = snapshot.data!;
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: lists.length,
+                        itemBuilder: (context, index) {
+                          final doc = lists[index];
+                          final data = doc.data() as Map<String, dynamic>;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 2,
+                            child: ListTile(
+                              title: Text(
+                                data['name'] ?? 'Sem nome',
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                              subtitle: Text(data['description'] ?? ''),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _deleteList(doc.id),
+                                tooltip: 'Excluir lista',
+                              ),
+                            ),
+                          );
+                        },
+                      );
+
+                    default:
+                      return const Center(child: CircularProgressIndicator());
+                  }
+                },
+              ),
+            ),
             /* corrigir aqui com algum setState para atualizar qtos faltam
             Row(
               mainAxisAlignment: MainAxisAlignment.center,

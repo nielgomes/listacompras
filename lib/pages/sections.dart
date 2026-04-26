@@ -1,39 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:listacompras2/repos/repoParse.dart';
+import 'package:listacompras2/services/firestore_lists_service.dart';
 
-class Sections extends StatelessWidget {
-  Sections({Key key}) : super(key: key);
+class Sections extends StatefulWidget {
+  const Sections({super.key});
 
-  Repo repo = Repo();
+  @override
+  State<Sections> createState() => _SectionsState();
+}
 
-  //constantes para organizarmos os produtos por seção
+class _SectionsState extends State<Sections> {
+  String _selectedSection = 'Outros';
+  String _itemName = '';
+  final FirestoreListsService _firestoreService = FirestoreListsService.instance;
+  bool _isSaving = false;
 
-  final List sectionTitle = [
-    'Bebidas',
-    'Comidas',
-    'Frios e Congelados',
-    'Frutas, Verduras e folhas',
-    'Produtos de Higiene',
-    'Produtos de Limpeza',
-    'Outros'
-  ];
+  // Lista de seções
+  static const Map<String, String> sectionLabels = {
+    'Bebidas': 'Bebidas',
+    'Comidas': 'Comidas',
+    'Frios e Congelados': 'Frios e Congelados',
+    'Frutas, Verduras e folhas': 'Frutas, Verduras e folhas',
+    'Produtos de Higiene': 'Produtos de Higiene',
+    'Produtos de Limpeza': 'Produtos de Limpeza',
+    'Outros': 'Outros',
+  };
 
-  String dropdownValue = 'oo';
-
-  static const pl = 'Produtos de Limpeza';
-  static const fv = 'Frutas, Verduras e folhas';
-  static const ph = 'Produtos de Higiene';
-  static const fc = 'Frios e Congelados';
-  static const bb = 'Bebidas';
-  static const cc = 'Comidas';
-  static const oo = 'Outros';
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args != null) {
+      _itemName = args.toString();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
+          title: const Text(
             "Lista de Compras",
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
@@ -43,72 +49,145 @@ class Sections extends StatelessWidget {
         body: Column(
           children: <Widget>[
             Container(
-              padding: EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.1),
+              padding: const EdgeInsets.fromLTRB(17.0, 1.0, 7.0, 1.1),
               child: Row(
                 children: <Widget>[
                   Expanded(
-                      child: TextField(
-                        decoration: InputDecoration(
-                          labelText: "Qual a seção do produto:  ${ModalRoute.of(context).settings.arguments as String} ?",
-                          labelStyle: TextStyle(color: Colors.blue),
-                        ),
-                      )
+                    child: TextField(
+                      onChanged: (value) {
+                        setState(() {
+                          _itemName = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        labelText: "Item: $_itemName",
+                        labelStyle: const TextStyle(color: Colors.blue),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: sectionTitle.length,
-                itemBuilder: (BuildContext context, int index) {
-                  return ListTile(
-                    title:
-                        Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Expanded(
-                              child: Container(
-                                alignment: Alignment.center,
-                                height: 50,
-                                decoration: BoxDecoration(borderRadius: BorderRadius.circular(8),
-                                  color: Colors.blueAccent,),
-                                child: Text(sectionTitle[index],
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                  ),
-                                  ),
-                              ),
-                            ),
-                          ],
-                        ),
-                    onTap: () {
-                      String section;
-                      if (sectionTitle[index] == bb) {
-                        section = 'bb';
-                      } else if (sectionTitle[index] == cc){
-                        section = 'cc';
-                      } else if (sectionTitle[index] == fc){
-                        section = 'fc';
-                      } else if (sectionTitle[index] == fv){
-                        section = 'fv';
-                      } else if (sectionTitle[index] == ph){
-                        section = 'ph';
-                      } else if (sectionTitle[index] == pl){
-                        section = 'pl';
-                      } else {
-                        section = 'oo';
-                      }
-                      repo.saveData(ModalRoute.of(context).settings.arguments as String, section);
-                      Navigator.pop(context);
-                    },
-                  );
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 17.0),
+              child: DropdownButtonFormField<String>(
+                initialValue: _selectedSection,
+                decoration: const InputDecoration(
+                  labelText: 'Selecione a seção',
+                  labelStyle: TextStyle(color: Colors.blue),
+                ),
+                items: sectionLabels.entries.map((e) {
+                  return DropdownMenuItem(value: e.key, child: Text(e.value));
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedSection = value ?? 'Outros';
+                  });
                 },
               ),
-            )
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _isSaving ? null : _addItem,
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Adicionar à Lista'),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView(
+                children: sectionLabels.entries.map((e) {
+                  return ListTile(
+                    title: Container(
+                      alignment: Alignment.center,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.blueAccent,
+                      ),
+                      child: Text(
+                        e.value,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    onTap: () {
+                      setState(() {
+                        _selectedSection = e.key;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _addItem() async {
+    print('🚀 _addItem iniciado');
+    
+    if (_itemName.isEmpty) {
+      print('⚠️ Nome do item vazio');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nome do item não pode ser vazio')),
+      );
+      return;
+    }
+
+    print('🔄 Mudando estado para _isSaving = true');
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      print('💾 Salvando item: $_itemName na seção: $_selectedSection');
+      
+      // Criar uma nova lista com o item
+      print('📞 Chamando createList...');
+      final listId = await _firestoreService.createList(
+        name: '$_itemName - $_selectedSection',
+        description: 'Item adicionado via Flutter Web',
+      );
+      
+      print('✅ createList retornou com ID: $listId');
+      print('🔄 Verificando mounted: ${mounted}');
+      
+      if (mounted) {
+        print('✅ Mostrando SnackBar de sucesso');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Item adicionado com sucesso!')),
+        );
+        print('🔙 Chamando Navigator.pop()');
+        Navigator.pop(context);
+        print('✅ Navigator.pop() completado');
+      } else {
+        print('⚠️ Widget não está mais mounted');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao salvar item: $e');
+      print('Tipo de erro: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      
+      if (mounted) {
+        print('✅ Mostrando SnackBar de erro');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao salvar: $e')),
+        );
+      }
+    } finally {
+      print('🔄 finally: Mudando estado para _isSaving = false');
+      setState(() {
+        _isSaving = false;
+      });
+      print('✅ finally completado');
+    }
   }
 }

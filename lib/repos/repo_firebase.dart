@@ -7,19 +7,19 @@ import 'package:listacompras2/repos/cruds.dart';
 class Repo extends StatefulWidget implements Cruds {
   //const Repo({Key key, this.initFirebase}) : super(key: key);
 
-
-  final String SourceCollection = 'listacompras';
-
+  final String sourceCollection = 'listacompras';
 
   @override
   State<Repo> createState() => _RepoState();
 
-  Home home = Home();
+  final Home home;
+
+  const Repo({super.key, required this.home});
 
   @override
   Future<int> countFalse() async {
     QuerySnapshot counting =
-    await FirebaseFirestore.instance.collection(SourceCollection).get();
+    await FirebaseFirestore.instance.collection(sourceCollection).get();
     int qtd = counting.docs.where((element) => element['ok'] == false).length;
     return qtd;
   }
@@ -28,46 +28,41 @@ class Repo extends StatefulWidget implements Cruds {
   void deleteAllTodos() async  {
     QuerySnapshot snapshot =
     await FirebaseFirestore.instance.collection('listacompras').get();
-    snapshot.docs.forEach((e) {
+    for (final e in snapshot.docs) {
       e.reference.delete();
-    });
+    }
   }
 
   @override
   void saveBkp() async {
+    final destinationCollection = 'listacompras_bkp_1';
 
-    int i = 1;
-
-    String destinationCollection = 'listacompras_bkp_' + i.toString();
-
-    QuerySnapshot snapshotIn =
-    await FirebaseFirestore.instance.collection(SourceCollection).get();
-    snapshotIn.docs.forEach((e) {
+    final snapshotIn =
+    await FirebaseFirestore.instance.collection(sourceCollection).get();
+    for (final e in snapshotIn.docs) {
       e.reference.delete();
-    });
+    }
 
-    QuerySnapshot snapshotOut =
-    await FirebaseFirestore.instance.collection(SourceCollection).get();
-    snapshotOut.docs.forEach((doc) {
+    final snapshotOut =
+    await FirebaseFirestore.instance.collection(sourceCollection).get();
+    for (final doc in snapshotOut.docs) {
       FirebaseFirestore.instance.collection(destinationCollection).doc().set({
         'title': doc['title'],
         'ok': doc['ok']
       });
-    });
-
-    i++;
+    }
   }
 
   @override
-  void saveData(String title, context) {
+  void saveData(String title, String section) {
     FirebaseFirestore.instance
         .collection('listacompras')
         .doc()
-        .set({'title': title, 'ok': false});
+        .set({'title': title, 'ok': false, 'section': section});
   }
 
   @override
-  void showDeleteListConfirmationDialog(context) {
+  void showDeleteListConfirmationDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -98,24 +93,26 @@ class _RepoState extends State<Repo> {
   //bool _isComposing = false;
 
   List<DocumentSnapshot> documents = [];
-  Map<String, dynamic> _lastRemoved;
-  String _lastRemovedPos;
+  Map<String, dynamic>? _lastRemoved;
+  String? _lastRemovedPos;
 
   //constantes para organizarmos os produtos por seção
-  static const pl = 'Produtos de Limpeza';
-  static const fv = 'Frutas, Verduras e folhas';
-  static const ph = 'Produtos de Higiene';
-  static const fc = 'Frios e Congelados';
-  static const bb = 'Bebidas';
-  static const cc = 'Comidas';
-  static const oo = 'Outros';
+  // Usadas para filtrar/organizar itens por seção na lista
+  // ignore: unused_field - mantidas para referência futura de implementação por seção
+  // ignore: non_constant_identifier_names
+  // static const pl = 'Produtos de Limpeza';
+  // static const fv = 'Frutas, Verduras e folhas';
+  // static const ph = 'Produtos de Higiene';
+  // static const fc = 'Frios e Congelados';
+  // static const bb = 'Bebidas';
+  // static const cc = 'Comidas';
+  // static const oo = 'Outros';
 
-
-
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('listacompras')
+          .collection(widget.sourceCollection)
           .orderBy('ok')
           .orderBy('title')
           .snapshots(),
@@ -127,8 +124,8 @@ class _RepoState extends State<Repo> {
               child: CircularProgressIndicator(),
             );
           default:
-            if (snapshot.hasData) {
-              documents = snapshot.data.docs;
+            if (snapshot.hasData && snapshot.data != null) {
+              documents = snapshot.data!.docs;
             }
 
             return ListView.builder(
@@ -166,7 +163,7 @@ class _RepoState extends State<Repo> {
       ),
       onDismissed: (direction) {
         setState(() {
-          _lastRemoved = Map.from(documents[index].data());
+          _lastRemoved = Map<String, dynamic>.from(documents[index].data() as Map);
           _lastRemovedPos = documents[index].id;
 
           setState(() {
@@ -177,7 +174,7 @@ class _RepoState extends State<Repo> {
           });
 
           final snack = SnackBar(
-            content: Text("Item \"${_lastRemoved["title"]}\" removido!"),
+            content: Text("Item \"${_lastRemoved?["title"] ?? "desconhecido"}\" removido!"),
             action: SnackBarAction(
                 label: "Desfazer",
                 onPressed: () {
@@ -186,8 +183,8 @@ class _RepoState extends State<Repo> {
                         .collection('listacompras')
                         .doc(_lastRemovedPos)
                         .set({
-                      'title': _lastRemoved["title"],
-                      'ok': _lastRemoved["ok"]
+                      'title': _lastRemoved?["title"] ?? "",
+                      'ok': _lastRemoved?["ok"] ?? false
                     });
                   });
                 }),
