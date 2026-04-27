@@ -14,16 +14,16 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # Firebase (Sincronização em Tempo Real)
-  firebase_core: ^3.8.0
-  cloud_firestore: ^5.5.0
-  firebase_auth: ^5.3.3
+  firebase_core: ^3.15.2
+  cloud_firestore: ^5.6.12
+  firebase_auth: ^5.7.0
   
   # Gerenciamento de Estado (MobX)
   mobx: ^2.4.0
   flutter_mobx: ^2.2.1+1
   
   # Variáveis de Ambiente
-  flutter_dotenv: ^5.2.1
+  flutter_dotenv: ^5.2.1  # Mantido por compatibilidade
   
   # Utilitários
   path_provider: ^2.1.5
@@ -33,11 +33,11 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   
   # MobX Code Generation
   mobx_codegen: ^2.6.1
-  build_runner: ^2.4.13
+  build_runner: ^2.4.14
 
 flutter:
   uses-material-design: true
