@@ -270,6 +270,17 @@ class FirestoreListsService {
     await batch.commit();
   }
   
+  /// Limpa TODOS os itens de uma lista (independente do status)
+  Future<void> clearAllItems(String listId) async {
+    final query = await _itemsCollection(listId).get();
+    
+    final batch = _firestore.batch();
+    for (final doc in query.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
+  
   /// Obtém todos os itens de uma lista com listener em tempo real
   Stream<List<DocumentSnapshot>> listenToItems(String listId) {
     return _itemsCollection(listId)
@@ -308,5 +319,43 @@ class FirestoreListsService {
       });
     }
     await batch.commit();
+  }
+  
+  /// Limpa TODOS os itens de TODAS as listas (deleta as listas ativas)
+  Future<void> clearAllListsItems() async {
+    try {
+      print('🗑️ Iniciando limpeza de todas as listas...');
+      
+      // Buscar todas as listas ativas
+      final listsQuery = await _listsCollection
+          .where('isActive', isEqualTo: true)
+          .get();
+      
+      final batch = _firestore.batch();
+      int totalListsDeleted = 0;
+      
+      for (final listDoc in listsQuery.docs) {
+        final listId = listDoc.id;
+        print('🗑️ Deletando lista: $listId');
+        batch.delete(listDoc.reference);
+        totalListsDeleted++;
+        
+        // Também deletar itens da subcoleção se existirem
+        final itemsQuery = await _itemsCollection(listId).get();
+        for (final itemDoc in itemsQuery.docs) {
+          batch.delete(itemDoc.reference);
+        }
+      }
+      
+      if (totalListsDeleted > 0) {
+        await batch.commit();
+        print('✅ Limpeza concluída: $totalListsDeleted listas removidas');
+      } else {
+        print('ℹ️ Nenhuma lista para limpar');
+      }
+    } catch (e) {
+      print('❌ Erro ao limpar todas as listas: $e');
+      rethrow;
+    }
   }
 }

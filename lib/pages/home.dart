@@ -125,27 +125,43 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void _showClearConfirmationDialog() {
-    showDialog(
+  Future<void> _showClearConfirmationDialog() async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Limpar lista?'),
-        content: const Text('Deseja limpar todos os itens desta lista?'),
+        title: const Text('Limpar tudo?'),
+        content: const Text('Deseja apagar todas as listas e seus itens?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancelar'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Limpar itens da lista atual
-            },
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Limpar'),
           ),
         ],
       ),
     );
+
+    if (confirm == true) {
+      try {
+        print('🗑️ Iniciando limpeza de todos os itens...');
+        await _firestoreService.clearAllListsItems();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Todas as listas foram apagadas com sucesso!')),
+          );
+        }
+      } catch (e) {
+        print('❌ Erro ao limpar: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao limpar: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
