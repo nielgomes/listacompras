@@ -142,52 +142,24 @@ class _SectionsState extends State<Sections> {
       return;
     }
 
-    print('🔄 Mudando estado para _isSaving = true');
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      print('💾 Salvando item: $_itemName na seção: $_selectedSection');
-      
-      // Criar uma nova lista com o item
-      print('📞 Chamando createList...');
-      final listId = await _firestoreService.createList(
-        name: '$_itemName - $_selectedSection',
-        description: 'Item adicionado via Flutter Web',
-      );
-      
-      print('✅ createList retornou com ID: $listId');
-      print('🔄 Verificando mounted: ${mounted}');
-      
+    // Optimistic UI: retornar imediatamente e salvar em background
+    print('✅ Optimistic UI: fechando tela imediatamente');
+    Navigator.pop(context);
+    
+    // Salvar em background (sem await - não bloqueia UI)
+    _firestoreService.createList(
+      name: '$_itemName - $_selectedSection',
+      description: 'Item adicionado via Flutter Web',
+    ).then((listId) {
+      print('✅ Item salvo em background com ID: $listId');
+    }).catchError((e) {
+      print('❌ Erro ao salvar em background: $e');
+      // Mostrar erro apenas se algo falhar
       if (mounted) {
-        print('✅ Mostrando SnackBar de sucesso');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Item adicionado com sucesso!')),
-        );
-        print('🔙 Chamando Navigator.pop()');
-        Navigator.pop(context);
-        print('✅ Navigator.pop() completado');
-      } else {
-        print('⚠️ Widget não está mais mounted');
-      }
-    } catch (e, stackTrace) {
-      print('❌ Erro ao salvar item: $e');
-      print('Tipo de erro: ${e.runtimeType}');
-      print('Stack trace: $stackTrace');
-      
-      if (mounted) {
-        print('✅ Mostrando SnackBar de erro');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro ao salvar: $e')),
         );
       }
-    } finally {
-      print('🔄 finally: Mudando estado para _isSaving = false');
-      setState(() {
-        _isSaving = false;
-      });
-      print('✅ finally completado');
-    }
+    });
   }
 }

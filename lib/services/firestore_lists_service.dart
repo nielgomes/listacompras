@@ -50,15 +50,8 @@ class FirestoreListsService {
         );
         print('✅ Firestore configurado com persistência');
         
-        // Verificar conexão com Firestore
-        print('🔍 Testando conexão com Firestore...');
-        try {
-          await _firestore.collection('test').get();
-          print('✅ Conexão com Firestore estabelecida!');
-        } catch (e) {
-          print('⚠️ Erro ao testar conexão: $e');
-          print('   Isso pode ser normal se as regras de segurança estiverem restritas');
-        }
+        // Não precisa testar conexão aqui - será testada naturalmente quando usar
+        // O Firestore funciona offline com cache local
       } catch (e, stackTrace) {
         print('❌ Erro ao inicializar Firebase: $e');
         print('Stack trace: $stackTrace');
@@ -110,58 +103,23 @@ class FirestoreListsService {
     print('   - Dados: name=$name, description=${description ?? ""}');
     print('   ⏳ AGUARDANDO RESPOSTA DO FIRESTORE...');
     
-    try {
-      final docRef = await _listsCollection.add({
-        'name': name,
-        'description': description ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'isActive': true,
-      }).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          print('⏰ TIMEOUT: Operação demorou mais que 30 segundos');
-          throw Exception('Timeout: Conexão com Firestore expirou após 30s');
-        },
-      );
-      print('✅ Firestore respondeu com ID: ${docRef.id}');
-      print('✅ Lista criada com ID: ${docRef.id}');
-      return docRef.id;
-    } catch (e, stackTrace) {
-      print('❌ ERRO DURANTE add(): $e');
-      print('Tipo: ${e.runtimeType}');
-      print('Stack: $stackTrace');
-      
-      // Tentar reconectar e reexecutar
-      print('🔄 Tentando reconectar...');
-      try {
-        print('🔄 Recriando Firestore instance...');
-        _firestore = FirebaseFirestore.instance;
-        print('✅ Firestore instance recriado');
-        
-        print('🔄 Tentando novamente...');
-        final docRef = await _listsCollection.add({
-          'name': name,
-          'description': description ?? '',
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'isActive': true,
-        }).timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            print('⏰ TIMEOUT (2ª tentativa): Operação demorou mais que 30 segundos');
-            throw Exception('Timeout: Conexão com Firestore expirou após 30s');
-          },
-        );
-        print('✅ Firestore respondeu com ID: ${docRef.id} (2ª tentativa)');
-        print('✅ Lista criada com ID: ${docRef.id}');
-        return docRef.id;
-      } catch (e2, stackTrace2) {
-        print('❌ ERRO NA 2ª TENTATIVA: $e2');
-        print('Stack: $stackTrace2');
-        rethrow;
-      }
-    }
+    // Timeout maior para evitar falsos positivos (operação pode ter sucesso mesmo com delay)
+    final docRef = await _listsCollection.add({
+      'name': name,
+      'description': description ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'isActive': true,
+    }).timeout(
+      const Duration(seconds: 60),
+      onTimeout: () {
+        print('⚠️ TIMEOUT: Operação demorou > 60s, mas pode ter sido concluída');
+        throw TimeoutException('Operação pode ter sido concluída, mas a resposta demorou demais');
+      },
+    );
+    print('✅ Firestore respondeu com ID: ${docRef.id}');
+    print('✅ Lista criada com ID: ${docRef.id}');
+    return docRef.id;
   }
   
   /// Obtém uma lista por ID
@@ -197,10 +155,10 @@ class FirestoreListsService {
         'isActive': false,
         'deletedAt': FieldValue.serverTimestamp(),
       }).timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 60),
         onTimeout: () {
-          print('⏰ TIMEOUT: Operação de delete expirou após 30s');
-          throw Exception('Timeout: Operação de delete expirou após 30s');
+          print('⚠️ TIMEOUT: Operação de delete pode ter sido concluída');
+          throw TimeoutException('Operação pode ter sido concluída, mas a resposta demorou demais');
         },
       );
       print('✅ Lista deletada com sucesso');
