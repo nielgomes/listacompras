@@ -1,107 +1,220 @@
-# listacompras
-app Flutter Android base para lista de compras geral.
+# Lista de Compras - Flutter Web App
 
-A ideia é implementar o app com listas pré progamadas (churrasco, compras do mês, etc), bem como, possibilidade de o usuário poder criar suas próprias listas personalizadas. 
+Aplicativo de lista de compras moderno e responsivo, construído com Flutter Web e Firebase Firestore, permitindo gerenciar listas de compras e itens em tempo real.
 
+## 🚀 Funcionalidades
 
-Já fizemos um MVP com integração ao Google Firebase que já da para manusear os registro por meio de Coleções e Objetos do Firebase. O próximo passo será implementar o login por contas do Google e habilitar para salvar e comportilhar listas para dois ou mais users logados.
+### Principais
+- ✅ **Criar Listas** - Crie múltiplas listas de compras com nome e descrição
+- ✅ **Gerenciar Itens** - Adicione, edite e exclua itens em cada lista
+- ✅ **Organização por Seções** - Itens categorizados (Bebidas, Comidas, Frios, Frutas, Higiene, Limpeza, Outros)
+- ✅ **Marcar/Desmarcar** - Controle de status de conclusão por item
+- ✅ **Sincronização em Tempo Real** - Firebase Firestore mantém todos os dispositivos atualizados
+- ✅ **Interface Moderna** - Design clean e responsivo para web
 
-Por segurança eu inclui o arquivo /android/app/google-services.json no .gitignore, pois ele possui as configurações de configuração de integração da aplicação com o Firebase.
+### Recursos Avançados
+- 📊 **Contador de Itens** - Visualize quantos itens foram concluídos vs total
+- 🎯 **Ações em Massa** - Marcar/desmarcar todos os itens de uma lista ou de todas as listas
+- 🔍 **Ordenação Automática** - Listas ordenadas alfabeticamente, itens por seção + nome
+- 🗑️ **Limpeza Completa** - Apague todas as listas e itens com confirmação
+- 📱 **Responsivo** - Interface adaptável para diferentes tamanhos de tela
 
+## 🛠️ Tecnologias Utilizadas
 
+- **Flutter 3.41.7** - Framework UI para construção multiplataforma
+- **Dart 3.11.5** - Linguagem de programação
+- **Firebase Firestore** - Banco de dados NoSQL em tempo real
+- **Docker** - Containerização do ambiente de desenvolvimento
 
-# listacompras English
-Flutter Android app base for general shopping list.
+## 📁 Estrutura do Projeto
 
-The idea is to implement the app with pre-programmed lists (barbecue, monthly shopping, etc.), as well as the possibility for the user to create their own custom lists.
-
-We have already made an MVP with integration to Google Firebase that can already handle records through Firebase Collections and Objects. The next step will be to implement login by Google accounts and enable saving and sharing lists for two or more logged-in users.
-
-For security reasons, I included the file /android/app/google-services.json in .gitignore because it contains the application integration configuration settings with Firebase.
-
----
-
-# 🐳 Docker Development Environment
-
-This project includes a complete Docker environment for isolated Flutter development without polluting the host OS.
-
-## 🚀 Quick Start
-
-### 1. Initial Setup
-
-```bash
-# Copy environment variables file
-cp .env.example .env
-
-# Edit .env with your Firebase credentials
-nano .env
+```
+lib/
+├── main.dart                 # Ponto de entrada da aplicação
+├── config/
+│   └── app_config.dart       # Configurações do app
+├── mobx/                     # MobX state management (gerado)
+├── pages/
+│   ├── home.dart            # Tela principal (listas)
+│   └── list_items.dart      # Tela de itens de uma lista
+├── repos/
+│   ├── cruds.dart           # Operações CRUD
+│   ├── init_data_bases.dart # Inicialização
+│   ├── repo_firebase.dart   # Repositório Firebase
+│   └── repo_parse.dart      # Parse de dados
+└── services/
+    ├── firestore_lists_service.dart  # Serviço principal Firestore
+    ├── firestore_test.dart          # Testes de conexão
+    └── firestore_service.dart       # Serviço base
 ```
 
-### 2. Start Docker Environment
+## 🚀 Começando
 
+### Pré-requisitos
+
+- Docker e Docker Compose instalados
+- Portas 4200 (web) e 8080 disponíveis
+
+### Instalação
+
+1. Clone o repositório:
 ```bash
-# Start Flutter container
-docker-compose up -d
-
-# Check if running
-docker-compose ps
+git clone <url-do-repositorio>
+cd listacompras
 ```
 
-### 3. Access Container
-
+2. Inicie o container Docker:
 ```bash
-# Access terminal inside container
-docker-compose exec flutter bash
+docker compose up -d
+```
 
-# Inside container, install dependencies
+3. Acesse o terminal do container:
+```bash
+docker compose exec flutter bash
+```
+
+4. Instale as dependências:
+```bash
 flutter pub get
-
-# Run app (debug mode)
-flutter run
 ```
 
-## 📋 Prerequisites
+5. Execute a aplicação:
+```bash
+flutter run -d web-server --web-port 4200
+```
 
-- Docker installed
-- Firebase credentials (or use Firebase Emulator)
+6. Acesse no navegador:
+```
+http://localhost:4200
+```
 
-## 🔧 Firebase Configuration
-
-### Option 1: Real Firebase
-
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a new project
-3. Add an Android app
-4. Copy credentials to `.env` file
-
-### Option 2: Firebase Emulator (Local Development)
+### Build para Produção
 
 ```bash
-# Start with Firebase Emulator
-docker-compose --profile firebase up -d
-
-# Access Emulator UI at: http://localhost:4000
+docker compose exec flutter flutter build web --release
 ```
 
-## 📁 Project Structure
+O build estará disponível em `build/web/`
 
+## 🔧 Configuração Firebase
+
+O projeto utiliza Firebase Firestore em modo Cloud (não emulador).
+
+### Variáveis de Ambiente
+
+Configure as credenciais do Firebase no ambiente ou através do arquivo de configuração apropriado.
+
+## 🎨 Interface do Usuário
+
+### Tela Principal (Home)
+
+- **Campo de texto** - Criar nova lista
+- **Botão +** - Adicionar lista
+- **Botão ✓** - Marcar todos os itens de todas as listas
+- **Botão ⊘** - Desmarcar todos os itens de todas as listas
+- **Botão ↻** - Sincronizar (atualizar)
+- **Menu ⋮** - Opções adicionais (Limpar tudo, Testar conexão)
+- **Lista de Listas** - Cards com nome, descrição e ações (editar/excluir)
+
+### Tela de Itens (ListItems)
+
+- **AppBar** - Nome da lista + contador (ex: "5/15 itens") + botão marcar/desmarcar todos
+- **Formulário** - Adicionar novo item com seleção de seção
+- **Lista de Itens** - Cards com checkbox, nome, seção e botão excluir
+- **Checkboxes** - Alternar status de conclusão
+
+## 🔍 Arquitetura
+
+### Padrão de Projeto
+
+- **StatefulWidget** - Gerenciamento de estado local
+- **StreamBuilder** - Reatividade com Firestore
+- **Repository Pattern** - Separação de camadas de dados
+- **Service Layer** - Lógica de negócios centralizada
+
+### Fluxo de Dados
+
+1. UI → Service (operações CRUD)
+2. Service → Firestore (persistência)
+3. Firestore → Stream → UI (atualização em tempo real)
+
+## ⚡ Performance
+
+### Otimizações Implementadas
+
+- **Firestore Web SDK** - Pattern fire-and-forget para evitar timeouts
+- **Batch Writes** - Atualizações em massa eficientes
+- **Tree Shaking** - Redução de tamanho de assets
+- **Streams** - Atualizações seletivas (não recarrega tudo)
+
+### Timeout Handling
+
+Todas as operações Firestore possuem timeout de 30 segundos com tratamento adequado.
+
+## 🐛 Troubleshooting
+
+### Problemas Comuns
+
+1. **Container não inicia**
+   ```bash
+   docker compose down
+   docker compose up -d
+   ```
+
+2. **Dependências desatualizadas**
+   ```bash
+   docker compose exec flutter flutter pub upgrade
+   ```
+
+3. **Erro de conexão Firestore**
+   - Verifique credenciais do Firebase
+   - Confira regras do Firestore
+   - Use o botão "Testar conexão"
+
+4. **Build falha**
+   ```bash
+   docker compose exec flutter flutter clean
+   docker compose exec flutter flutter pub get
+   ```
+
+## 📊 Análise de Código
+
+```bash
+# Analisar código
+docker compose exec flutter flutter analyze
+
+# Verificar dependências desatualizadas
+docker compose exec flutter flutter pub outdated
 ```
-listacompras/
-├── lib/
-│   ├── config/
-│   │   └── app_config.dart      # Settings loaded from .env
-│   ├── services/
-│   │   └── firestore_lists_service.dart  # Firebase service
-│   └── ...
-├── firebase/
-│   └── emulator-data/          # Emulator data (persistent)
-├── Dockerfile                # Flutter environment definition
-├── docker-compose.yml         # Services orchestration
-├── .env.example               # Environment variables template
-└── pubspec.yaml               # Flutter dependencies
-```
+
+## 🔄 Atualizações Recente
+
+### v1.0.0 - Lançamento Inicial
+- ✅ CRUD completo de listas e itens
+- ✅ Sincronização em tempo real
+- ✅ Interface web responsiva
+- ✅ Ordenação automática
+- ✅ Ações em massa
+- ✅ Tratamento de erros robusto
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT.
+
+## 👥 Contribuição
+
+Contribuições são bem-vindas! Sinta-se à vontade para:
+- Reportar bugs
+- Sugerir novas funcionalidades
+- Submeter pull requests
+
+## 📞 Suporte
+
+Para dúvidas ou suporte, por favor abra uma issue no repositório.
 
 ---
+
+**Desenvolvido com ❤️ usando Flutter e Firebase**
 
 ## ✅ Testando a Aplicação
 
@@ -187,105 +300,6 @@ flutter install
 
 **Nota:** Para `flutter install` funcionar, você precisa habilitar "Depuração USB" nas opções de desenvolvedor do Android.
 
-## 🔨 Useful Commands
-
-### Docker
-
-```bash
-# Stop services
-docker compose down
-
-# Rebuild after Dockerfile changes
-docker compose build --no-cache
-
-# View logs
-docker compose logs -f flutter
-
-# Restart service
-docker compose restart flutter
-```
-
-### Flutter (inside container)
-
-```bash
-# Update dependencies
-flutter pub get
-
-# Generate MobX code
-flutter pub run build_runner build
-
-# Build debug APK
-flutter build apk --debug
-
-# Code analysis
-flutter analyze
-```
-
-## 🛠️ Troubleshooting
-
-### "Firebase not configured"
-
-Check if `.env` file exists and is properly configured:
-
-```bash
-cat .env
-```
-
-### "Permission denied" when creating files
-
-Docker volumes may have permission issues. Recreate volumes:
-
-```bash
-docker compose down -v
-docker compose up -d
-```
-
-## 📱 Firestore Data Structure
-
-```
-shopping_lists/
-  ├── {listId}/
-  │   ├── name: string
-  │   ├── description: string
-  │   ├── createdAt: timestamp
-  │   ├── updatedAt: timestamp
-  │   ├── isActive: boolean
-  │   └── items/
-  │       ├── {itemId}/
-  │       │   ├── title: string
-  │       │   ├── section: string
-  │       │   ├── completed: boolean
-  │       │   ├── createdAt: timestamp
-  │       │   └── updatedAt: timestamp
-```
-
-## 🔐 Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `FIREBASE_PROJECT_ID` | Firebase Project ID | lista-compras-app |
-| `FIREBASE_API_KEY` | Web API Key | AIzaSy... |
-| `FIREBASE_AUTH_DOMAIN` | Auth Domain | app.firebaseapp.com |
-| `FIREBASE_APP_ID` | App ID | 1:...:android:... |
-| `ENVIRONMENT` | Environment | development |
-| `DEBUG` | Debug mode | true |
-
-## 🌐 Flutter Web - Development with Host Browser
-
-This project supports Flutter Web development using the host machine's Chrome browser, without needing Chromium inside the container.
-
-### Why use host browser?
-
-- No need to install Chromium inside the container
-- Uses the Chrome already installed on your host machine
-- Faster development cycle
-- Hot reload works perfectly
-
-### Prerequisites
-
-- Chrome (or any Chromium-based browser) installed on host machine
-- Container running with `docker-compose up -d`
-
 ### Running Flutter Web
 
 #### Option 1: Using web-server (Recommended)
@@ -340,12 +354,3 @@ flutter run -d web-server --web-port=8888 --web-hostname=0.0.0.0
 ```
 
 Then access http://localhost:8888
-
-### Docker Configuration
-
-The `docker-compose.yml` is already configured with:
-
-- Port `50000`: Flutter debug
-- Port `4200`: Flutter Web Server
-
-Make sure these ports are available on your host machine.
