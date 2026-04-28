@@ -44,17 +44,60 @@ class _ListItemsPageState extends State<ListItemsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.listName),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.listName, style: const TextStyle(fontSize: 18)),
+            StreamBuilder<List<DocumentSnapshot>>(
+              stream: _itemsStream,
+              builder: (context, snapshot) {
+                int totalItems = 0;
+                int completedItems = 0;
+                if (snapshot.hasData) {
+                  totalItems = snapshot.data!.length;
+                  for (var doc in snapshot.data!) {
+                    final data = doc.data() as Map<String, dynamic>?;
+                    if (data?['completed'] == true) {
+                      completedItems++;
+                    }
+                  }
+                }
+                return Text(
+                  '$completedItems/$totalItems itens',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+                );
+              },
+            ),
+          ],
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: _showEditListDialog,
-            tooltip: 'Editar nome da lista',
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: _confirmDeleteList,
-            tooltip: 'Excluir lista',
+          StreamBuilder<List<DocumentSnapshot>>(
+            stream: _itemsStream,
+            builder: (context, snapshot) {
+              int totalItems = 0;
+              int completedItems = 0;
+              if (snapshot.hasData) {
+                totalItems = snapshot.data!.length;
+                for (var doc in snapshot.data!) {
+                  final data = doc.data() as Map<String, dynamic>?;
+                  if (data?['completed'] == true) {
+                    completedItems++;
+                  }
+                }
+              }
+              if (totalItems == 0) {
+                return const SizedBox.shrink();
+              }
+              final allCompleted = totalItems > 0 && completedItems == totalItems;
+              return IconButton(
+                icon: Icon(
+                  allCompleted ? Icons.check_box : Icons.check_box_outline_blank,
+                  color: allCompleted ? Colors.green : null,
+                ),
+                tooltip: allCompleted ? 'Desmarcar todos' : 'Marcar todos',
+                onPressed: () => _toggleAllItems(allCompleted),
+              );
+            },
           ),
         ],
       ),
@@ -233,60 +276,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
     }
   }
 
-  void _showEditListDialog() {
-    print('✏️ _showEditListDialog: listId=${widget.listId}');
-    
-    final controller = TextEditingController(text: widget.listName);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Editar lista'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Nome da lista'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty) {
-                print('   - Atualizando lista...');
-                try {
-                  await _firestoreService.updateList(
-                    listId: widget.listId,
-                    name: newName,
-                    description: 'Lista atualizada',
-                  );
-                  print('   ✅ Lista atualizada com sucesso');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Lista atualizada')),
-                    );
-                    Navigator.pop(context);
-                  }
-                } catch (e, stackTrace) {
-                  print('❌ Erro ao atualizar lista: $e');
-                  print('Stack trace: $stackTrace');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Erro ao atualizar lista: $e')),
-                    );
-                  }
-                }
-              }
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _confirmDeleteList() async {
     print('🗑️ _confirmDeleteList: listId=${widget.listId}');
     
@@ -370,6 +359,61 @@ class _ListItemsPageState extends State<ListItemsPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Erro ao excluir item: $e')),
+          );
+        }
+      }
+    }
+  }
+
+
+  Future<void> _toggleAllItems(bool allCompleted) async {
+    print('🔄 _toggleAllItems: allCompleted=$allCompleted');
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(allCompleted ? 'Desmarcar todos?' : 'Marcar todos?'),
+        content: Text(allCompleted 
+            ? 'Deseja desmarcar todos os itens desta lista?'
+            : 'Deseja marcar todos os itens desta lista como concluídos?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: allCompleted ? Colors.orange : Colors.green,
+            ),
+            child: Text(allCompleted ? 'Desmarcar' : 'Marcar'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm == true) {
+      try {
+        if (allCompleted) {
+          print('   - Desmarcando todos os itens...');
+          await _firestoreService.uncompleteAllItems(widget.listId);
+          print('   ✅ Todos os itens desmarcados');
+        } else {
+          print('   - Marcando todos os itens...');
+          await _firestoreService.completeAllItems(widget.listId);
+          print('   ✅ Todos os itens marcados');
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(allCompleted ? 'Todos desmarcados' : 'Todos marcados')),
+          );
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro ao alternar todos os itens: $e');
+        print('Stack trace: $stackTrace');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro: $e')),
           );
         }
       }

@@ -321,6 +321,62 @@ class _HomeState extends State<Home> {
     }
   }
 
+  Future<void> _toggleAllItems(bool complete) async {
+    print('✅ _toggleAllItems: complete=$complete');
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(complete ? 'Marcar todos?' : 'Desmarcar todos?'),
+        content: Text(complete
+            ? 'Deseja marcar TODOS os itens de TODAS as listas como concluídos?'
+            : 'Deseja desmarcar TODOS os itens de TODAS as listas?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              backgroundColor: complete ? Colors.green : Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(complete ? 'Marcar todos' : 'Desmarcar todos'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        if (complete) {
+          await _firestoreService.completeAllItemsAllLists();
+        } else {
+          await _firestoreService.uncompleteAllItemsAllLists();
+        }
+        print('   ✅ Operação concluída com sucesso!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(complete
+                  ? 'Todos os itens marcados como concluídos!'
+                  : 'Todos os itens desmarcados!'),
+            ),
+          );
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro: $e');
+        print('Stack trace: $stackTrace');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -332,111 +388,67 @@ class _HomeState extends State<Home> {
           ),
           backgroundColor: Colors.blueAccent,
           centerTitle: true,
-        ),
-        drawer: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              DrawerHeader(
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent,
-                ),
-                child: Text('Menu Lateral',
-                  style: TextStyle(fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.white),
-                ),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Listas',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.add_circle),
+              onPressed: _showCreateListDialog,
+              tooltip: 'Criar nova lista',
+            ),
+            IconButton(
+              icon: const Icon(Icons.checklist),
+              onPressed: () => _toggleAllItems(true),
+              tooltip: 'Marcar todos',
+            ),
+            IconButton(
+              icon: const Icon(Icons.remove_done),
+              onPressed: () => _toggleAllItems(false),
+              tooltip: 'Desmarcar todos',
+            ),
+            IconButton(
+              icon: const Icon(Icons.sync),
+              onPressed: () {
+                print('🔄 Sincronização automática via StreamBuilder');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Dados sincronizados automaticamente!'),
+                    duration: Duration(seconds: 1),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle, color: Colors.blueAccent),
-                    onPressed: _showCreateListDialog,
-                    tooltip: 'Criar nova lista',
+                );
+              },
+              tooltip: 'Sincronizar',
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'limpar') {
+                  _showClearConfirmationDialog();
+                } else if (value == 'testar') {
+                  _testFirestoreConnection();
+                }
+              },
+              itemBuilder: (BuildContext context) => [
+                const PopupMenuItem(
+                  value: 'limpar',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Limpar tudo'),
+                    ],
                   ),
-                ],
-              ),
-              Container(
-                padding: EdgeInsets.fromLTRB(8,4,8,4),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.blueAccent, width: 2),
-                    borderRadius: BorderRadius.circular(15.0)
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blueAccent),
-                            onPressed: _saveList,
-                            child: Text("Salvar",
-                                style: TextStyle(color: Colors.white)),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 5,
-                        ),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              print('🔄 Sincronização automática via StreamBuilder');
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Dados sincronizados automaticamente!'),
-                                  duration: Duration(seconds: 1),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green),
-                            child: Text("Sync",
-                                style: TextStyle(color: Colors.white)),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 5,
-                        ),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent),
-                            child: Text("Limpar",
-                                style: TextStyle(color: Colors.white)),
-                            onPressed: () {
-                              _showClearConfirmationDialog();
-                            },
-                          ),
-                        ),
-                        SizedBox(
-                          width: 5,
-                        ),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange),
-                            child: Text("Testar",
-                                style: TextStyle(color: Colors.white)),
-                            onPressed: _testFirestoreConnection,
-                          ),
-                        )
-                      ],
-                    ),
-                  )
                 ),
-              ),
-            ],
-          ),
+                const PopupMenuItem(
+                  value: 'testar',
+                  child: Row(
+                    children: [
+                      Icon(Icons.science, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text('Testar conexão'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
         body: Column(
           children: <Widget>[
@@ -448,25 +460,21 @@ class _HomeState extends State<Home> {
                       child: TextField(
                     controller: _toDoController,
                     decoration: InputDecoration(
-                      labelText: "Lista de compra",
+                      labelText: 'Nova Lista',
                       labelStyle: TextStyle(color: Colors.blueAccent),
-                      errorText:
-                          _toDoController.text.isEmpty && _isComposing ? 'Informar nome da lista' : null,
+                      border: OutlineInputBorder(),
                     ),
-                    onChanged: (text) {
-                      setState(() {
-                        _isComposing = text.isNotEmpty;
-                      });
-                    },
+                    onSubmitted: (value) => _saveList(),
                   )),
+                  SizedBox(width: 5),
                   ElevatedButton(
-                    onPressed: () {
-                      _saveList();
-                    },
+                    onPressed: _saveList,
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent),
-                    child: Text("ADD", style: TextStyle(color: Colors.white)),
-                  )
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text('Salvar'),
+                  ),
                 ],
               ),
             ),
@@ -474,92 +482,92 @@ class _HomeState extends State<Home> {
               child: StreamBuilder<List<DocumentSnapshot>>(
                 stream: _listsStream,
                 builder: (context, snapshot) {
-                  print('📡 Home StreamBuilder connectionState: ${snapshot.connectionState}');
-                  
-                  switch (snapshot.connectionState) {
-                    case ConnectionState.none:
-                      print('   - Nenhum estado');
-                      return const Center(child: CircularProgressIndicator());
+                  print('📡 StreamBuilder connectionState: ${snapshot.connectionState}');
 
-                    case ConnectionState.waiting:
-                      print('   - Aguardando dados...');
-                      return const Center(child: CircularProgressIndicator());
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    print('   - Aguardando dados...');
+                    return Center(child: CircularProgressIndicator());
+                  }
 
-                    case ConnectionState.active:
-                    case ConnectionState.done:
-                      if (snapshot.hasError) {
-                        print('   - Erro no stream: ${snapshot.error}');
-                        return Center(
-                          child: Text('Erro ao carregar listas: ${snapshot.error}'),
-                        );
-                      }
-                      
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        print('   - Nenhuma lista encontrada');
-                        return const Center(
-                          child: Text('Nenhuma lista encontrada. Crie uma nova!'),
-                        );
-                      }
+                  if (snapshot.hasError) {
+                    print('   - Erro no stream: ${snapshot.error}');
+                    return Center(
+                      child: Text('Erro ao carregar listas: ${snapshot.error}'),
+                    );
+                  }
 
-                      final lists = snapshot.data!;
-                      print('   - ${lists.length} listas carregadas');
-                      
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(8),
-                        itemCount: lists.length,
-                        itemBuilder: (context, index) {
-                          final doc = lists[index];
-                          final data = doc.data() as Map<String, dynamic>;
-                          final name = data['name'] ?? 'Sem nome';
-                          final description = data['description'] ?? '';
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    print('   - Nenhuma lista encontrada');
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.shopping_cart, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text('Nenhuma lista ainda',
+                              style: TextStyle(fontSize: 18, color: Colors.grey)),
+                          SizedBox(height: 8),
+                          Text('Crie sua primeira lista!',
+                              style: TextStyle(fontSize: 14, color: Colors.grey)),
+                        ],
+                      ),
+                    );
+                  }
 
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            elevation: 2,
-                            child: ListTile(
-                              title: Text(
-                                name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 16,
+                  final lists = snapshot.data!;
+                  print('   - ${lists.length} listas carregadas');
+
+                  return ListView.builder(
+                    padding: EdgeInsets.all(8),
+                    itemCount: lists.length,
+                    itemBuilder: (context, index) {
+                      final list = lists[index];
+                      final data = list.data() as Map<String, dynamic>;
+                      final name = data['name'] ?? 'Sem nome';
+                      final description = data['description'] ?? '';
+
+                      return Card(
+                        margin: EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          title: Text(
+                            name,
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: description.isNotEmpty
+                              ? Text(description)
+                              : null,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.edit, color: Colors.blue),
+                                onPressed: () =>
+                                    _showEditListDialog(list.id, name),
+                                tooltip: 'Editar',
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _deleteList(list.id),
+                                tooltip: 'Excluir',
+                              ),
+                            ],
+                          ),
+                          onTap: () {
+                            print('📄 Navegando para itens da lista: $name');
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ListItemsPage(
+                                  listId: list.id,
+                                  listName: name,
                                 ),
                               ),
-                              subtitle: Text(description),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_note, color: Colors.blue),
-                                    onPressed: () => _showEditListDialog(doc.id, name),
-                                    tooltip: 'Editar',
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () => _deleteList(doc.id),
-                                    tooltip: 'Excluir lista',
-                                  ),
-                                ],
-                              ),
-                              onTap: () {
-                                print('📱 Navegando para lista: $name (ID: ${doc.id})');
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ListItemsPage(
-                                      listId: doc.id,
-                                      listName: name,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       );
-
-                    default:
-                      return const Center(child: CircularProgressIndicator());
-                  }
+                    },
+                  );
                 },
               ),
             ),

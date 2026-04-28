@@ -246,7 +246,7 @@ class FirestoreListsService {
     }
     
     return query
-        .orderBy('updatedAt', descending: true)
+        .orderBy('name')  // Ordena alfabeticamente por nome
         .snapshots()
         .map((snapshot) => snapshot.docs)
         .handleError((error, stackTrace) {
@@ -466,7 +466,8 @@ class FirestoreListsService {
   Stream<List<DocumentSnapshot>> listenToItems(String listId) {
     print('📡 listenToItems: listId=$listId');
     return _itemsCollection(listId)
-        .orderBy('createdAt')
+        .orderBy('section')  // Primeiro agrupa por seção
+        .orderBy('title')    // Depois ordena alfabeticamente por título
         .snapshots()
         .map((snapshot) => snapshot.docs)
         .handleError((error, stackTrace) {
@@ -591,7 +592,108 @@ class FirestoreListsService {
     }
   }
   
+
   /// Limpa recursos do serviço
+  /// Marca todos os itens de todas as listas como concluídos
+  Future<void> completeAllItemsAllLists() async {
+    print('✅ completeAllItemsAllLists: Iniciando...');
+    
+    try {
+      // Buscar todas as listas ativas
+      final listsQuery = await _listsCollection
+          .where('isActive', isEqualTo: true)
+          .get();
+      
+      print('   - Encontradas ${listsQuery.docs.length} listas');
+      
+      final batch = _firestore.batch();
+      int totalItems = 0;
+      
+      for (final listDoc in listsQuery.docs) {
+        final listId = listDoc.id;
+        final itemsQuery = await _itemsCollection(listId)
+            .where('completed', isEqualTo: false)
+            .get();
+        
+        for (final itemDoc in itemsQuery.docs) {
+          batch.update(itemDoc.reference, {
+            'completed': true,
+            'updatedAt': DateTime.now().toIso8601String(),
+          });
+          totalItems++;
+        }
+      }
+      
+      if (totalItems > 0) {
+        print('   - Atualizando $totalItems itens...');
+        await batch.commit().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            print('   ⚠️ Timeout no completeAllItemsAllLists() após 30s, mas itens podem ter sido atualizados');
+            return;
+          },
+        );
+        print('✅ Todos os itens marcados como concluídos!');
+      } else {
+        print('ℹ️ Nenhum item pendente para marcar');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao marcar todos os itens: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+  
+  /// Desmarca todos os itens de todas as listas
+  Future<void> uncompleteAllItemsAllLists() async {
+    print('✅ uncompleteAllItemsAllLists: Iniciando...');
+    
+    try {
+      // Buscar todas as listas ativas
+      final listsQuery = await _listsCollection
+          .where('isActive', isEqualTo: true)
+          .get();
+      
+      print('   - Encontradas ${listsQuery.docs.length} listas');
+      
+      final batch = _firestore.batch();
+      int totalItems = 0;
+      
+      for (final listDoc in listsQuery.docs) {
+        final listId = listDoc.id;
+        final itemsQuery = await _itemsCollection(listId)
+            .where('completed', isEqualTo: true)
+            .get();
+        
+        for (final itemDoc in itemsQuery.docs) {
+          batch.update(itemDoc.reference, {
+            'completed': false,
+            'updatedAt': DateTime.now().toIso8601String(),
+          });
+          totalItems++;
+        }
+      }
+      
+      if (totalItems > 0) {
+        print('   - Atualizando $totalItems itens...');
+        await batch.commit().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            print('   ⚠️ Timeout no uncompleteAllItemsAllLists() após 30s, mas itens podem ter sido atualizados');
+            return;
+          },
+        );
+        print('✅ Todos os itens desmarcados!');
+      } else {
+        print('ℹ️ Nenhum item concluído para desmarcar');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao desmarcar todos os itens: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+  
   void dispose() {
     print('🗑️ FirestoreListsService disposed');
   }
