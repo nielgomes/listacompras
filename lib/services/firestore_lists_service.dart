@@ -694,6 +694,72 @@ class FirestoreListsService {
     }
   }
   
+  /// Cria uma lista com itens em uma única operação
+  Future<String> createListWithItems({
+    required String name,
+    String? description,
+    required List<Map<String, String>> items,
+  }) async {
+    print('📝 createListWithItems: name=$name, items=${items.length}');
+    
+    // Verificar se o Firebase foi inicializado
+    try {
+      if (!_isInitialized) {
+        print('⚠️ Firebase não foi inicializado ainda, tentando agora...');
+        await initialize();
+      }
+    } catch (e) {
+      print('❌ ERRO: Firebase não foi inicializado: $e');
+      throw Exception('Firebase não foi inicializado. Por favor, recarregue a página.');
+    }
+    
+    try {
+      print('🚀 Criando lista e itens em batch...');
+      
+      // Criar documento da lista
+      final listRef = _listsCollection.doc();
+      final batch = _firestore.batch();
+      
+      // Dados da lista
+      batch.set(listRef, {
+        'name': name,
+        'description': description ?? '',
+        'createdAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+        'isActive': true,
+      });
+      
+      // Adicionar itens
+      for (final item in items) {
+        final itemRef = _itemsCollection(listRef.id).doc();
+        batch.set(itemRef, {
+          'title': item['title'] ?? '',
+          'section': item['section'] ?? 'Outros',
+          'completed': false,
+          'createdAt': DateTime.now().toIso8601String(),
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+      }
+      
+      print('   - Committing batch com ${items.length + 1} operações...');
+      await batch.commit().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('   ⚠️ Timeout no createListWithItems() após 30s, mas dados podem ter sido salvos');
+          return;
+        },
+      );
+      
+      print('✅ Lista criada com sucesso! ID: ${listRef.id}');
+      return listRef.id;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao criar lista com itens: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
   void dispose() {
     print('🗑️ FirestoreListsService disposed');
   }

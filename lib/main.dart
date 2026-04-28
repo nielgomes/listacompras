@@ -6,6 +6,7 @@ import 'package:listacompras2/pages/home.dart';
 import 'package:listacompras2/pages/list_items.dart';
 import 'package:listacompras2/pages/sections.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
+import 'package:listacompras2/services/openrouter_service.dart';
 
 void main() {
   // Capturar erros não tratados
@@ -22,6 +23,15 @@ void main() {
       print('❌ Erro crítico ao inicializar Firebase: $e');
       print('Stack trace: $stackTrace');
       // Não rethrow para permitir que o app inicie e mostre erro na UI
+    }
+
+    // Inicializar OpenRouterService
+    try {
+      await OpenRouterService().initialize();
+    } catch (e, stackTrace) {
+      print('⚠️ Erro ao inicializar OpenRouterService: $e');
+      print('Stack trace: $stackTrace');
+      // Não é crítico, o app pode funcionar sem IA
     }
 
     runApp(const MyApp());
@@ -42,6 +52,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     FirestoreListsService.instance.dispose();
+    OpenRouterService().clearCache();
     print('🗑️ MyApp disposed');
     super.dispose();
   }

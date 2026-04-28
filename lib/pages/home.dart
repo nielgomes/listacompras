@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:listacompras2/pages/list_items.dart';
+import 'package:listacompras2/pages/smart_lists.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
 import 'package:listacompras2/services/firestore_test.dart';
 
@@ -393,6 +394,19 @@ class _HomeState extends State<Home> {
               icon: const Icon(Icons.add_circle),
               onPressed: _showCreateListDialog,
               tooltip: 'Criar nova lista',
+            ),
+            IconButton(
+              icon: const Icon(Icons.auto_awesome),
+              onPressed: () {
+                print('🤖 Navegando para Listas Inteligentes');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SmartListsPage(),
+                  ),
+                );
+              },
+              tooltip: 'Listas Inteligentes',
             ),
             IconButton(
               icon: const Icon(Icons.checklist),

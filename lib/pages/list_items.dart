@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
+import 'package:listacompras2/services/openrouter_service.dart';
 
 class ListItemsPage extends StatefulWidget {
   final String listId;
@@ -18,9 +19,10 @@ class ListItemsPage extends StatefulWidget {
 
 class _ListItemsPageState extends State<ListItemsPage> {
   final FirestoreListsService _firestoreService = FirestoreListsService.instance;
+  final OpenRouterService _openRouterService = OpenRouterService();
   final TextEditingController _itemController = TextEditingController();
-  String _selectedSection = 'Outros';
   bool _isAddingItem = false;
+  bool _isClassifying = false;
   late final Stream<List<DocumentSnapshot>> _itemsStream;
 
   static const Map<String, String> sectionLabels = {
@@ -37,7 +39,19 @@ class _ListItemsPageState extends State<ListItemsPage> {
   void initState() {
     super.initState();
     _itemsStream = _firestoreService.listenToItems(widget.listId);
+    _initializeOpenRouter();
     print('📥 ListItemsPageState criado — stream de itens inicializado para a lista: ${widget.listId}');
+  }
+
+  Future<void> _initializeOpenRouter() async {
+    try {
+      await _openRouterService.initialize();
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('⚠️ Erro ao inicializar OpenRouterService: $e');
+    }
   }
 
   @override
@@ -114,27 +128,27 @@ class _ListItemsPageState extends State<ListItemsPage> {
                     controller: _itemController,
                     decoration: const InputDecoration(
                       labelText: 'Nome do item',
+                      hintText: 'Ex: Coca-Cola 2L, Maçã, etc.',
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _addItem(),
                   ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: _selectedSection,
-                    decoration: const InputDecoration(
-                      labelText: 'Seção',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  if (_isClassifying)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Classificando com IA...', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
                     ),
-                    items: sectionLabels.entries.map((e) {
-                      return DropdownMenuItem(value: e.key, child: Text(e.value));
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedSection = value ?? 'Outros';
-                      });
-                    },
-                  ),
                   const SizedBox(height: 8),
                   ElevatedButton(
                     onPressed: _isAddingItem ? null : _addItem,
@@ -240,21 +254,51 @@ class _ListItemsPageState extends State<ListItemsPage> {
     }
 
     print('📝 Iniciando adição de item: $title');
-    setState(() => _isAddingItem = true);
-    print('✅ Estado _isAddingItem definido para true');
+    setState(() {
+      _isAddingItem = true;
+      _isClassifying = true;
+    });
+    print('✅ Estados definidos: _isAddingItem=true, _isClassifying=true');
+    
+    String section = 'Outros';
     
     try {
-      print('🚀 Chamando addItem no Firestore...');
+      // Tentar classificar com IA se o serviço estiver configurado
+      if (_openRouterService.isConfigured) {
+        print('🤖 Tentando classificar item com IA...');
+        setState(() => _isClassifying = true);
+        
+        final classifiedSection = await _openRouterService.classifyItem(title)
+            .timeout(const Duration(seconds: 15), onTimeout: () {
+          print('⚠️ Timeout na classificação IA, usando "Outros"');
+          return 'Outros';
+        });
+        
+        section = classifiedSection;
+        print('✅ Classificação IA: "$title" -> "$section"');
+      } else {
+        print('ℹ️ OpenRouter não configurado, usando seção padrão "Outros"');
+      }
+    } catch (e, stackTrace) {
+      print('⚠️ Erro na classificação IA: $e');
+      print('Usando seção padrão "Outros"');
+      section = 'Outros';
+    } finally {
+      setState(() => _isClassifying = false);
+    }
+    
+    try {
+      print('🚀 Chamando addItem no Firestore (seção: $section)...');
       await _firestoreService.addItem(
         listId: widget.listId,
         title: title,
-        section: _selectedSection,
+        section: section,
       );
       print('✅ Item adicionado com sucesso!');
       _itemController.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Item adicionado')),
+          SnackBar(content: Text('Item "$title" adicionado em $section')),
         );
       }
     } catch (e, stackTrace) {
@@ -266,12 +310,15 @@ class _ListItemsPageState extends State<ListItemsPage> {
         );
       }
     } finally {
-      print('🔄 Executando finally - resetando estado _isAddingItem para false');
+      print('🔄 Executando finally - resetando estados');
       if (mounted) {
-        setState(() => _isAddingItem = false);
-        print('✅ Estado _isAddingItem resetado para false');
+        setState(() {
+          _isAddingItem = false;
+          _isClassifying = false;
+        });
+        print('✅ Estados resetados para false');
       } else {
-        print('⚠️ Widget não está mounted, não é possível resetar estado');
+        print('⚠️ Widget não está mounted');
       }
     }
   }
