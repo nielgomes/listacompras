@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:listacompras2/pages/list_items.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
 import 'package:listacompras2/services/firestore_test.dart';
 
@@ -16,11 +17,6 @@ class _HomeState extends State<Home> {
 
   bool _isComposing = false;
 
-  // ============================================
-  // LISTAS DE COMPRAS (Sincronização em Tempo Real)
-  // ============================================
-
-  /// Stream de listas ativas do Firebase — atualiza automaticamente
   late final Stream<List<DocumentSnapshot>> _listsStream =
       _firestoreService.listenToLists(onlyActive: true);
 
@@ -28,6 +24,13 @@ class _HomeState extends State<Home> {
   void initState() {
     super.initState();
     print('📥 HomeState criado — lista sincronizada com Firebase em tempo real');
+  }
+  
+  @override
+  void dispose() {
+    _toDoController.dispose();
+    print('🗑️ HomeState disposed');
+    super.dispose();
   }
 
   void _reset() {
@@ -38,24 +41,35 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _saveList() async {
-    try {
-      print('💾 Salvando lista: ${_toDoController.text}');
-      if (_toDoController.text.isNotEmpty) {
-        await _firestoreService.createList(
-          name: _toDoController.text,
-          description: 'Lista criada via app Flutter Web',
+    final text = _toDoController.text.trim();
+    if (text.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor, informe o nome da lista')),
         );
-        print('✅ Lista salva com sucesso!');
-        _reset();
-        // StreamBuilder atualiza automaticamente — sem reload manual necessário
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Lista salva com sucesso!')),
-          );
-        }
       }
-    } catch (e) {
-      print('❌ Erro ao salvar: $e');
+      return;
+    }
+    
+    print('💾 _saveList: name=$text');
+    
+    try {
+      print('   - Criando lista...');
+      await _firestoreService.createList(
+        name: text,
+        description: 'Lista criada via app Flutter Web',
+      );
+      print('   ✅ Lista criada com sucesso!');
+      _reset();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lista salva com sucesso!')),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao salvar lista: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro ao salvar: $e')),
@@ -83,8 +97,146 @@ class _HomeState extends State<Home> {
     }
   }
 
+  Future<void> _showCreateListDialog() async {
+    print('📝 _showCreateListDialog');
+    
+    final nameController = TextEditingController();
+    final descController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Criar nova lista'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Nome da lista',
+                hintText: 'Ex: Supermercado Sábado',
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(
+                labelText: 'Descrição (opcional)',
+                hintText: 'Ex: Compras para o fim de semana',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Criar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final name = nameController.text.trim();
+      if (name.isNotEmpty) {
+        print('   - Criando lista: $name');
+        try {
+          await _firestoreService.createList(
+            name: name,
+            description: descController.text.trim(),
+          );
+          print('   ✅ Lista criada com sucesso!');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lista "$name" criada com sucesso!')),
+            );
+          }
+        } catch (e, stackTrace) {
+          print('❌ Erro ao criar lista: $e');
+          print('Stack trace: $stackTrace');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Erro ao criar lista: $e')),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _showEditListDialog(String listId, String currentName) async {
+    print('✏️ _showEditListDialog: listId=$listId, currentName=$currentName');
+    
+    final controller = TextEditingController(text: currentName);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar lista'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Nome da lista',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final newName = controller.text.trim();
+      if (newName.isNotEmpty) {
+        print('   - Atualizando lista: $newName');
+        try {
+          await _firestoreService.updateList(
+            listId: listId,
+            name: newName,
+            description: 'Lista atualizada',
+          );
+          print('   ✅ Lista atualizada com sucesso!');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Lista atualizada!')),
+            );
+          }
+        } catch (e, stackTrace) {
+          print('❌ Erro ao atualizar lista: $e');
+          print('Stack trace: $stackTrace');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Erro ao atualizar: $e')),
+            );
+          }
+        }
+      }
+    }
+  }
+
   Future<void> _deleteList(String listId) async {
-    print('🗑️ Iniciando exclusão da lista: $listId');
+    print('🗑️ _deleteList: listId=$listId');
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -105,17 +257,18 @@ class _HomeState extends State<Home> {
     );
 
     if (confirm == true) {
-      print('✅ Confirmou exclusão, chamando deleteList...');
+      print('   - Confirmou exclusão, chamando deleteList...');
       try {
         await _firestoreService.deleteList(listId);
-        print('✅ Lista deletada — StreamBuilder vai atualizar a UI automaticamente');
+        print('   ✅ Lista deletada — StreamBuilder vai atualizar a UI automaticamente');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Lista excluída com sucesso!')),
           );
         }
-      } catch (e) {
-        print('❌ Erro ao excluir: $e');
+      } catch (e, stackTrace) {
+        print('❌ Erro ao excluir lista: $e');
+        print('Stack trace: $stackTrace');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Erro ao excluir: $e')),
@@ -126,6 +279,8 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _showClearConfirmationDialog() async {
+    print('🗑️ _showClearConfirmationDialog');
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -145,16 +300,18 @@ class _HomeState extends State<Home> {
     );
 
     if (confirm == true) {
+      print('   - Iniciando limpeza de todos os itens...');
       try {
-        print('🗑️ Iniciando limpeza de todos os itens...');
         await _firestoreService.clearAllListsItems();
+        print('   ✅ Limpeza concluída com sucesso!');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Todas as listas foram apagadas com sucesso!')),
           );
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
         print('❌ Erro ao limpar: $e');
+        print('Stack trace: $stackTrace');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Erro ao limpar: $e')),
@@ -166,7 +323,6 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
-
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
@@ -192,13 +348,18 @@ class _HomeState extends State<Home> {
                 ),
               ),
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Listas',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, color: Colors.blueAccent),
+                    onPressed: _showCreateListDialog,
+                    tooltip: 'Criar nova lista',
                   ),
                 ],
               ),
@@ -229,8 +390,6 @@ class _HomeState extends State<Home> {
                         Expanded(
                           child: ElevatedButton(
                             onPressed: () {
-                              // StreamBuilder já atualiza automaticamente!
-                              // Este botão força uma verificação manual
                               print('🔄 Sincronização automática via StreamBuilder');
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -289,10 +448,10 @@ class _HomeState extends State<Home> {
                       child: TextField(
                     controller: _toDoController,
                     decoration: InputDecoration(
-                      labelText: "Item a ser comprado",
+                      labelText: "Lista de compra",
                       labelStyle: TextStyle(color: Colors.blueAccent),
                       errorText:
-                          _toDoController.text.isEmpty ? 'Informar item' : null,
+                          _toDoController.text.isEmpty && _isComposing ? 'Informar nome da lista' : null,
                     ),
                     onChanged: (text) {
                       setState(() {
@@ -301,14 +460,9 @@ class _HomeState extends State<Home> {
                     },
                   )),
                   ElevatedButton(
-                    onPressed: _isComposing
-                        ? () {
-                            Navigator.pushNamed(context,
-                                '/sections',
-                                arguments: _toDoController.text.toLowerCase());
-                            _reset();
-                          }
-                        : null,
+                    onPressed: () {
+                      _saveList();
+                    },
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blueAccent),
                     child: Text("ADD", style: TextStyle(color: Colors.white)),
@@ -320,41 +474,84 @@ class _HomeState extends State<Home> {
               child: StreamBuilder<List<DocumentSnapshot>>(
                 stream: _listsStream,
                 builder: (context, snapshot) {
+                  print('📡 Home StreamBuilder connectionState: ${snapshot.connectionState}');
+                  
                   switch (snapshot.connectionState) {
                     case ConnectionState.none:
+                      print('   - Nenhum estado');
+                      return const Center(child: CircularProgressIndicator());
+
                     case ConnectionState.waiting:
+                      print('   - Aguardando dados...');
                       return const Center(child: CircularProgressIndicator());
 
                     case ConnectionState.active:
                     case ConnectionState.done:
+                      if (snapshot.hasError) {
+                        print('   - Erro no stream: ${snapshot.error}');
+                        return Center(
+                          child: Text('Erro ao carregar listas: ${snapshot.error}'),
+                        );
+                      }
+                      
                       if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        print('   - Nenhuma lista encontrada');
                         return const Center(
-                          child: Text('Nenhuma lista encontrada'),
+                          child: Text('Nenhuma lista encontrada. Crie uma nova!'),
                         );
                       }
 
                       final lists = snapshot.data!;
+                      print('   - ${lists.length} listas carregadas');
+                      
                       return ListView.builder(
                         padding: const EdgeInsets.all(8),
                         itemCount: lists.length,
                         itemBuilder: (context, index) {
                           final doc = lists[index];
                           final data = doc.data() as Map<String, dynamic>;
+                          final name = data['name'] ?? 'Sem nome';
+                          final description = data['description'] ?? '';
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             elevation: 2,
                             child: ListTile(
                               title: Text(
-                                data['name'] ?? 'Sem nome',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 16,
+                                ),
                               ),
-                              subtitle: Text(data['description'] ?? ''),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _deleteList(doc.id),
-                                tooltip: 'Excluir lista',
+                              subtitle: Text(description),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_note, color: Colors.blue),
+                                    onPressed: () => _showEditListDialog(doc.id, name),
+                                    tooltip: 'Editar',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.red),
+                                    onPressed: () => _deleteList(doc.id),
+                                    tooltip: 'Excluir lista',
+                                  ),
+                                ],
                               ),
+                              onTap: () {
+                                print('📱 Navegando para lista: $name (ID: ${doc.id})');
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ListItemsPage(
+                                      listId: doc.id,
+                                      listName: name,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           );
                         },
@@ -366,26 +563,6 @@ class _HomeState extends State<Home> {
                 },
               ),
             ),
-            /* corrigir aqui com algum setState para atualizar qtos faltam
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(5.0),
-                  child: FutureBuilder<int>(
-                    future: repo.countFalse(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        (snapshot.data);
-                        return Text('Faltam $snapshot.data itens');
-                      } else {
-                        return CircularProgressIndicator();
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),*/
           ],
         ),
       ),

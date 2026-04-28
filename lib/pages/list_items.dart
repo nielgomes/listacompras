@@ -1,0 +1,385 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:listacompras2/services/firestore_lists_service.dart';
+
+class ListItemsPage extends StatefulWidget {
+  final String listId;
+  final String listName;
+
+  const ListItemsPage({
+    super.key,
+    required this.listId,
+    required this.listName,
+  });
+
+  @override
+  State<ListItemsPage> createState() => _ListItemsPageState();
+}
+
+class _ListItemsPageState extends State<ListItemsPage> {
+  final FirestoreListsService _firestoreService = FirestoreListsService.instance;
+  final TextEditingController _itemController = TextEditingController();
+  String _selectedSection = 'Outros';
+  bool _isAddingItem = false;
+  late final Stream<List<DocumentSnapshot>> _itemsStream;
+
+  static const Map<String, String> sectionLabels = {
+    'Bebidas': 'Bebidas',
+    'Comidas': 'Comidas',
+    'Frios e Congelados': 'Frios e Congelados',
+    'Frutas, Verduras e folhas': 'Frutas, Verduras e folhas',
+    'Produtos de Higiene': 'Produtos de Higiene',
+    'Produtos de Limpeza': 'Produtos de Limpeza',
+    'Outros': 'Outros',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _itemsStream = _firestoreService.listenToItems(widget.listId);
+    print('📥 ListItemsPageState criado — stream de itens inicializado para a lista: ${widget.listId}');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.listName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: _showEditListDialog,
+            tooltip: 'Editar nome da lista',
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _confirmDeleteList,
+            tooltip: 'Excluir lista',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Formulário para adicionar item
+          Card(
+            margin: const EdgeInsets.all(8),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _itemController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome do item',
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _addItem(),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _selectedSection,
+                    decoration: const InputDecoration(
+                      labelText: 'Seção',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    items: sectionLabels.entries.map((e) {
+                      return DropdownMenuItem(value: e.key, child: Text(e.value));
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedSection = value ?? 'Outros';
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: _isAddingItem ? null : _addItem,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 45),
+                    ),
+                    child: _isAddingItem
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Adicionar Item'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Lista de itens
+          Expanded(
+            child: StreamBuilder<List<DocumentSnapshot>>(
+              stream: _itemsStream,
+              builder: (context, snapshot) {
+                print('📡 StreamBuilder connectionState: ${snapshot.connectionState}');
+                
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  print('   - Aguardando dados...');
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                if (snapshot.hasError) {
+                  print('   - Erro no stream: ${snapshot.error}');
+                  return Center(
+                    child: Text('Erro ao carregar itens: ${snapshot.error}'),
+                  );
+                }
+                
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  print('   - Nenhum item nesta lista');
+                  return const Center(
+                    child: Text('Nenhum item nesta lista'),
+                  );
+                }
+                
+                final items = snapshot.data!;
+                print('   - ${items.length} itens carregados');
+                
+                return ListView.builder(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final data = item.data() as Map<String, dynamic>;
+                    final title = data['title'] ?? 'Sem nome';
+                    final section = data['section'] ?? 'Outros';
+                    final completed = data['completed'] ?? false;
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Checkbox(
+                          value: completed,
+                          onChanged: (value) {
+                            print('   ✅ Alternando status do item: $title');
+                            _firestoreService.toggleItemCompletion(
+                              listId: widget.listId,
+                              itemId: item.id,
+                            );
+                          },
+                        ),
+                        title: Text(
+                          title,
+                          style: TextStyle(
+                            decoration: completed ? TextDecoration.lineThrough : null,
+                            color: completed ? Colors.grey : null,
+                          ),
+                        ),
+                        subtitle: Text(sectionLabels[section] ?? section),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _confirmDeleteItem(item.id, title),
+                          tooltip: 'Excluir item',
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addItem() async {
+    final title = _itemController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Digite o nome do item')),
+      );
+      return;
+    }
+
+    print('📝 Iniciando adição de item: $title');
+    setState(() => _isAddingItem = true);
+    print('✅ Estado _isAddingItem definido para true');
+    
+    try {
+      print('🚀 Chamando addItem no Firestore...');
+      await _firestoreService.addItem(
+        listId: widget.listId,
+        title: title,
+        section: _selectedSection,
+      );
+      print('✅ Item adicionado com sucesso!');
+      _itemController.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Item adicionado')),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao adicionar item: $e');
+      print('Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao adicionar: $e')),
+        );
+      }
+    } finally {
+      print('🔄 Executando finally - resetando estado _isAddingItem para false');
+      if (mounted) {
+        setState(() => _isAddingItem = false);
+        print('✅ Estado _isAddingItem resetado para false');
+      } else {
+        print('⚠️ Widget não está mounted, não é possível resetar estado');
+      }
+    }
+  }
+
+  void _showEditListDialog() {
+    print('✏️ _showEditListDialog: listId=${widget.listId}');
+    
+    final controller = TextEditingController(text: widget.listName);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar lista'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Nome da lista'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                print('   - Atualizando lista...');
+                try {
+                  await _firestoreService.updateList(
+                    listId: widget.listId,
+                    name: newName,
+                    description: 'Lista atualizada',
+                  );
+                  print('   ✅ Lista atualizada com sucesso');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Lista atualizada')),
+                    );
+                    Navigator.pop(context);
+                  }
+                } catch (e, stackTrace) {
+                  print('❌ Erro ao atualizar lista: $e');
+                  print('Stack trace: $stackTrace');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Erro ao atualizar lista: $e')),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteList() async {
+    print('🗑️ _confirmDeleteList: listId=${widget.listId}');
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir lista?'),
+        content: const Text('Esta ação não pode ser desfeita. Todos os itens serão perdidos.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm == true) {
+      print('   - Excluindo lista...');
+      try {
+        await _firestoreService.deleteList(widget.listId);
+        print('   ✅ Lista excluída com sucesso');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lista excluída')),
+          );
+          Navigator.pop(context);
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro ao excluir lista: $e');
+        print('Stack trace: $stackTrace');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao excluir lista: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteItem(String itemId, String itemName) async {
+    print('🗑️ _confirmDeleteItem: itemId=$itemId, itemName=$itemName');
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir item?'),
+        content: Text('Deseja remover "$itemName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm == true) {
+      print('   - Excluindo item...');
+      try {
+        await _firestoreService.removeItem(listId: widget.listId, itemId: itemId);
+        print('   ✅ Item excluído com sucesso');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Item excluído')),
+          );
+        }
+      } catch (e, stackTrace) {
+        print('❌ Erro ao excluir item: $e');
+        print('Stack trace: $stackTrace');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao excluir item: $e')),
+          );
+        }
+      }
+    }
+  }
+  
+  @override
+  void dispose() {
+    _itemController.dispose();
+    print('🗑️ ListItemsPage disposed');
+    super.dispose();
+  }
+}

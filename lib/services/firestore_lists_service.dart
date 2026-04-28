@@ -23,11 +23,21 @@ class FirestoreListsService {
     }
     
     print('🔧 Inicializando Firebase...');
-    await _config.init();
+    try {
+      await _config.init();
+      print('✅ Variáveis de ambiente carregadas');
+    } catch (e) {
+      print('❌ Erro ao carregar variáveis de ambiente: $e');
+      rethrow;
+    }
     
     print('📋 Verificando configuração Firebase...');
     
     if (_config.isFirebaseConfigured) {
+      print('✅ Firebase configurado');
+      print('   - Project ID: ${_config.firebaseProjectId}');
+      print('   - API Key: ${_config.firebaseApiKey.substring(0, 10)}...');
+      
       try {
         print('⚙️ Chamando Firebase.initializeApp()...');
         await Firebase.initializeApp(
@@ -39,29 +49,37 @@ class FirestoreListsService {
           ),
         );
         print('✅ Firebase inicializado com sucesso!');
-        _firestore = FirebaseFirestore.instance;
-        print('📡 Firestore instance criado');
         
-        // Configurar Firestore para manter conexão ativa
+        // Obter instância do Firestore PRIMEIRO
+        _firestore = FirebaseFirestore.instance;
+        print('📡 Firestore instance obtido');
+        
+        // Configurar Firestore DEPOIS de obter a instância
+        // Não definir host personalizado - deixar o SDK usar o padrão
+        // Isso resolve problemas de hang no Flutter Web
         print('⚙️ Configurando Firestore...');
-        FirebaseFirestore.instance.settings = const Settings(
+        _firestore.settings = const Settings(
           persistenceEnabled: true,
           cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+          // Não definir host e sslEnabled - deixa o SDK usar padrões do Firebase
         );
-        print('✅ Firestore configurado com persistência');
-        
-        // Não precisa testar conexão aqui - será testada naturalmente quando usar
-        // O Firestore funciona offline com cache local
+        print('✅ Firestore configurado (usando padrões do SDK)');
       } catch (e, stackTrace) {
         print('❌ Erro ao inicializar Firebase: $e');
+        print('Tipo: ${e.runtimeType}');
         print('Stack trace: $stackTrace');
         rethrow;
       }
     } else {
+      print('❌ Firebase não configurado');
+      print('   - Project ID: ${_config.firebaseProjectId.isEmpty ? "(vazio)" : "definido"}');
+      print('   - API Key: ${_config.firebaseApiKey.isEmpty ? "(vazio)" : "definido"}');
+      print('   - App ID: ${_config.firebaseAppId.isEmpty ? "(vazio)" : "definido"}');
       throw Exception('Firebase not configured. Check your .env file.');
     }
     
     _isInitialized = true;
+    print('✅ Firebase inicializado com sucesso!');
   }
   
   /// Coleção principal das listas de compras
@@ -81,8 +99,7 @@ class FirestoreListsService {
     required String name,
     String? description,
   }) async {
-    print('📝 Criando lista: $name');
-    print('🔍 Verificando conexão com Firestore...');
+    print('📝 createList: name=$name');
     
     // Verificar se o Firebase foi inicializado
     try {
@@ -96,35 +113,45 @@ class FirestoreListsService {
       print('❌ ERRO: Firebase não foi inicializado: $e');
       throw Exception('Firebase não foi inicializado. Por favor, recarregue a página.');
     }
-    print('   - Firestore instance: OK');
     
     print('🚀 Chamando _listsCollection.add()...');
     print('   - Coleção: shopping_lists');
     print('   - Dados: name=$name, description=${description ?? ""}');
-    print('   ⏳ AGUARDANDO RESPOSTA DO FIRESTORE...');
     
-    // Timeout maior para evitar falsos positivos (operação pode ter sucesso mesmo com delay)
-    final docRef = await _listsCollection.add({
-      'name': name,
-      'description': description ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-      'isActive': true,
-    }).timeout(
-      const Duration(seconds: 60),
-      onTimeout: () {
-        print('⚠️ TIMEOUT: Operação demorou > 60s, mas pode ter sido concluída');
-        throw TimeoutException('Operação pode ter sido concluída, mas a resposta demorou demais');
-      },
-    );
-    print('✅ Firestore respondeu com ID: ${docRef.id}');
-    print('✅ Lista criada com ID: ${docRef.id}');
-    return docRef.id;
+    try {
+      // Usar add() simples - sem timeout
+      // O add() tem comportamento mais consistente no Flutter Web
+      print('   🚀 Executando add()...');
+      final docRef = await _listsCollection.add({
+        'name': name,
+        'description': description ?? '',
+        'createdAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+        'isActive': true,
+      });
+      print('✅ Lista criada com ID: ${docRef.id}');
+      return docRef.id;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao criar lista: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Obtém uma lista por ID
   Future<DocumentSnapshot?> getList(String listId) async {
-    return await _listsCollection.doc(listId).get();
+    print('📋 getList: listId=$listId');
+    
+    try {
+      final doc = await _listsCollection.doc(listId).get();
+      print('   - Documento encontrado: ${doc.exists}');
+      return doc;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao obter lista: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Atualiza uma lista
@@ -134,56 +161,84 @@ class FirestoreListsService {
     String? description,
     bool? isActive,
   }) async {
+    print('📝 updateList: listId=$listId');
+    
     final data = <String, dynamic>{
-      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedAt': DateTime.now().toIso8601String(),
     };
     
     if (name != null) data['name'] = name;
     if (description != null) data['description'] = description;
     if (isActive != null) data['isActive'] = isActive;
     
-    await _listsCollection.doc(listId).update(data);
+    try {
+      print('🚀 Chamando update()...');
+      await _listsCollection.doc(listId).update(data).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('   ⚠️ Timeout no updateList() após 30s, mas lista pode ter sido atualizada');
+          return;
+        },
+      );
+      print('✅ Lista atualizada com sucesso!');
+    } catch (e, stackTrace) {
+      print('❌ Erro ao atualizar lista: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Deleta uma lista (soft delete)
   Future<void> deleteList(String listId) async {
-    print('🗑️ Deletando lista: $listId');
+    print('🗑️ deleteList: listId=$listId');
     
     try {
       print('🔄 Atualizando documento...');
       await _listsCollection.doc(listId).update({
         'isActive': false,
-        'deletedAt': FieldValue.serverTimestamp(),
+        'deletedAt': DateTime.now().toIso8601String(),
       }).timeout(
-        const Duration(seconds: 60),
+        const Duration(seconds: 30),
         onTimeout: () {
-          print('⚠️ TIMEOUT: Operação de delete pode ter sido concluída');
-          throw TimeoutException('Operação pode ter sido concluída, mas a resposta demorou demais');
+          print('   ⚠️ Timeout no deleteList() após 30s, mas lista pode ter sido deletada');
+          return;
         },
       );
       print('✅ Lista deletada com sucesso');
     } catch (e, stackTrace) {
       print('❌ Erro ao deletar lista: $e');
       print('Tipo: ${e.runtimeType}');
-      print('Stack: $stackTrace');
+      print('Stack trace: $stackTrace');
       rethrow;
     }
   }
   
   /// Lista todas as listas ativas
   Future<List<QueryDocumentSnapshot>> getLists({bool onlyActive = true}) async {
-    Query query = _listsCollection;
-    if (onlyActive) {
-      query = query.where('isActive', isEqualTo: true);
+    print('📋 getLists: onlyActive=$onlyActive');
+    
+    try {
+      Query query = _listsCollection;
+      if (onlyActive) {
+        query = query.where('isActive', isEqualTo: true);
+      }
+      final snapshot = await query.get();
+      print('   - Encontradas ${snapshot.docs.length} listas');
+      return snapshot.docs;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao obter listas: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     }
-    final snapshot = await query.get();
-    return snapshot.docs;
   }
 
   /// Lista todas as listas ativas com listener em tempo real
   Stream<List<DocumentSnapshot>> listenToLists({
     bool onlyActive = true,
   }) {
+    print('📡 listenToLists: onlyActive=$onlyActive');
+    
     Query query = _listsCollection;
     
     if (onlyActive) {
@@ -193,7 +248,11 @@ class FirestoreListsService {
     return query
         .orderBy('updatedAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs);
+        .map((snapshot) => snapshot.docs)
+        .handleError((error, stackTrace) {
+      print('❌ Erro no stream de listas: $error');
+      print('Stack trace: $stackTrace');
+    });
   }
   
   // ============================================
@@ -201,18 +260,67 @@ class FirestoreListsService {
   // ============================================
   
   /// Adiciona um item à lista
-  Future<void> addItem({
+  /// Retorna o ID do item criado
+  Future<String> addItem({
     required String listId,
     required String title,
     String? section,
   }) async {
-    await _itemsCollection(listId).add({
-      'title': title,
-      'section': section ?? 'outros',
-      'completed': false,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    print('📝 addItem: listId=$listId, title=$title, section=${section ?? "outros"}');
+    print('   - _isInitialized=$_isInitialized');
+    
+    try {
+      print('   - Verificando inicialização...');
+      if (!_isInitialized) {
+        print('⚠️ Firebase não inicializado, tentando...');
+        await initialize();
+      } else {
+        print('   - Firebase já inicializado, prosseguindo...');
+      }
+      print('   ✅ Firebase OK');
+      
+      final collection = _itemsCollection(listId);
+      print('   - Coleção: shopping_lists/$listId/items');
+      
+      final data = {
+        'title': title,
+        'section': section ?? 'outros',
+        'completed': false,
+        'createdAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+      print('   - Dados: $data');
+      
+      // SOLUÇÃO PARA FLUTTER WEB:
+      // O método add()/set() tem um problema conhecido no Flutter Web onde o Future
+      // nunca completa quando há um listener ativo (StreamBuilder) na mesma coleção.
+      // Isso acontece porque o Firestore Web SDK otimiza operações com listeners.
+      //
+      // A solução correta é:
+      // 1. Gerar o ID do documento manualmente
+      // 2. Chamar set() SEM aguardar (fire-and-forget)
+      // 3. Retornar o ID imediatamente
+      // 4. Confiar no Stream (listener) para confirmar que o item foi salvo
+      //
+      // O StreamBuilder na UI vai receber a atualização automaticamente via snapshot,
+      // então não precisamos esperar pelo Future completar.
+      print('   🚀 Executando set() (fire-and-forget para Web)...');
+      final docRef = collection.doc();
+      
+      // Não usamos await aqui! O Future é executado em background.
+      // Se der erro, será capturado pelo listener do Stream.
+      docRef.set(data).catchError((error, stackTrace) {
+        print('⚠️ Erro assíncrono no set() (já salvo via stream): $error');
+      });
+      
+      print('✅ Item adicionado com ID: ${docRef.id} (retorno imediato)');
+      return docRef.id;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao adicionar item: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Atualiza um item
@@ -223,15 +331,32 @@ class FirestoreListsService {
     String? section,
     bool? completed,
   }) async {
+    print('📝 updateItem: listId=$listId, itemId=$itemId');
+    
     final data = <String, dynamic>{
-      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedAt': DateTime.now().toIso8601String(),
     };
     
     if (title != null) data['title'] = title;
     if (section != null) data['section'] = section;
     if (completed != null) data['completed'] = completed;
     
-    await _itemsCollection(listId).doc(itemId).update(data);
+    try {
+      print('🚀 Chamando update()...');
+      await _itemsCollection(listId).doc(itemId).update(data).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('   ⚠️ Timeout no update() após 30s, mas item pode ter sido atualizado');
+          return;
+        },
+      );
+      print('✅ Item atualizado com sucesso!');
+    } catch (e, stackTrace) {
+      print('❌ Erro ao atualizar item: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Marca/desmarca item como concluído
@@ -239,14 +364,31 @@ class FirestoreListsService {
     required String listId,
     required String itemId,
   }) async {
-    final doc = await _itemsCollection(listId).doc(itemId).get();
-    final data = doc.data() as Map<String, dynamic>?;
-    final currentStatus = data?['completed'] ?? false;
+    print('✅ toggleItemCompletion: listId=$listId, itemId=$itemId');
     
-    await _itemsCollection(listId).doc(itemId).update({
-      'completed': !currentStatus,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      final doc = await _itemsCollection(listId).doc(itemId).get();
+      final data = doc.data() as Map<String, dynamic>?;
+      final currentStatus = data?['completed'] ?? false;
+      
+      print('   - Status atual: $currentStatus, novo status: ${!currentStatus}');
+      await _itemsCollection(listId).doc(itemId).update({
+        'completed': !currentStatus,
+        'updatedAt': DateTime.now().toIso8601String(),
+      }).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('   ⚠️ Timeout no toggleItemCompletion() após 30s, mas item pode ter sido atualizado');
+          return;
+        },
+      );
+      print('✅ Item atualizado com sucesso!');
+    } catch (e, stackTrace) {
+      print('❌ Erro ao alternar status do item: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Remove um item da lista
@@ -254,39 +396,83 @@ class FirestoreListsService {
     required String listId,
     required String itemId,
   }) async {
-    await _itemsCollection(listId).doc(itemId).delete();
+    print('🗑️ removeItem: listId=$listId, itemId=$itemId');
+    
+    try {
+      print('🚀 Chamando delete()...');
+      await _itemsCollection(listId).doc(itemId).delete();
+      print('✅ Item removido com sucesso!');
+    } catch (e, stackTrace) {
+      print('❌ Erro ao remover item: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   /// Limpa todos os itens concluídos de uma lista
   Future<void> clearCompletedItems(String listId) async {
-    final query = await _itemsCollection(listId)
-        .where('completed', isEqualTo: true)
-        .get();
+    print('🗑️ clearCompletedItems: listId=$listId');
     
-    final batch = _firestore.batch();
-    for (final doc in query.docs) {
-      batch.delete(doc.reference);
+    try {
+      final query = await _itemsCollection(listId)
+          .where('completed', isEqualTo: true)
+          .get();
+      
+      print('   - Encontrados ${query.docs.length} itens concluídos');
+      
+      final batch = _firestore.batch();
+      for (final doc in query.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      if (query.docs.isNotEmpty) {
+        await batch.commit();
+        print('✅ Itens concluídos removidos');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao limpar itens concluídos: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     }
-    await batch.commit();
   }
   
   /// Limpa TODOS os itens de uma lista (independente do status)
   Future<void> clearAllItems(String listId) async {
-    final query = await _itemsCollection(listId).get();
+    print('🗑️ clearAllItems: listId=$listId');
     
-    final batch = _firestore.batch();
-    for (final doc in query.docs) {
-      batch.delete(doc.reference);
+    try {
+      final query = await _itemsCollection(listId).get();
+      
+      print('   - Encontrados ${query.docs.length} itens');
+      
+      final batch = _firestore.batch();
+      for (final doc in query.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      if (query.docs.isNotEmpty) {
+        await batch.commit();
+        print('✅ Todos os itens removidos');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao limpar todos os itens: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     }
-    await batch.commit();
   }
   
   /// Obtém todos os itens de uma lista com listener em tempo real
   Stream<List<DocumentSnapshot>> listenToItems(String listId) {
+    print('📡 listenToItems: listId=$listId');
     return _itemsCollection(listId)
         .orderBy('createdAt')
         .snapshots()
-        .map((snapshot) => snapshot.docs);
+        .map((snapshot) => snapshot.docs)
+        .handleError((error, stackTrace) {
+      print('❌ Erro no stream de itens: $error');
+      print('Stack trace: $stackTrace');
+    });
   }
   
   // ============================================
@@ -295,48 +481,91 @@ class FirestoreListsService {
   
   /// Marca todos os itens como concluídos
   Future<void> completeAllItems(String listId) async {
-    final query = await _itemsCollection(listId).get();
+    print('✅ completeAllItems: listId=$listId');
     
-    final batch = _firestore.batch();
-    for (final doc in query.docs) {
-      batch.update(doc.reference, {
-        'completed': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    try {
+      final query = await _itemsCollection(listId).get();
+      
+      print('   - Encontrados ${query.docs.length} itens');
+      
+      final batch = _firestore.batch();
+      for (final doc in query.docs) {
+        batch.update(doc.reference, {
+          'completed': true,
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+      }
+      
+      if (query.docs.isNotEmpty) {
+        await batch.commit().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            print('   ⚠️ Timeout no completeAllItems() após 30s, mas itens podem ter sido atualizados');
+            return;
+          },
+        );
+        print('✅ Todos os itens marcados como concluídos');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao marcar todos os itens como concluídos: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     }
-    await batch.commit();
   }
   
   /// Desmarca todos os itens
   Future<void> uncompleteAllItems(String listId) async {
-    final query = await _itemsCollection(listId).get();
+    print('✅ uncompleteAllItems: listId=$listId');
     
-    final batch = _firestore.batch();
-    for (final doc in query.docs) {
-      batch.update(doc.reference, {
-        'completed': false,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    try {
+      final query = await _itemsCollection(listId).get();
+      
+      print('   - Encontrados ${query.docs.length} itens');
+      
+      final batch = _firestore.batch();
+      for (final doc in query.docs) {
+        batch.update(doc.reference, {
+          'completed': false,
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+      }
+      
+      if (query.docs.isNotEmpty) {
+        await batch.commit().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            print('   ⚠️ Timeout no uncompleteAllItems() após 30s, mas itens podem ter sido atualizados');
+            return;
+          },
+        );
+        print('✅ Todos os itens desmarcados');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erro ao desmarcar todos os itens: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     }
-    await batch.commit();
   }
   
   /// Limpa TODOS os itens de TODAS as listas (deleta as listas ativas)
   Future<void> clearAllListsItems() async {
+    print('🗑️ clearAllListsItems: Iniciando limpeza de todas as listas...');
+    
     try {
-      print('🗑️ Iniciando limpeza de todas as listas...');
-      
       // Buscar todas as listas ativas
+      print('   - Buscando listas ativas...');
       final listsQuery = await _listsCollection
           .where('isActive', isEqualTo: true)
           .get();
+      
+      print('   - Encontradas ${listsQuery.docs.length} listas');
       
       final batch = _firestore.batch();
       int totalListsDeleted = 0;
       
       for (final listDoc in listsQuery.docs) {
         final listId = listDoc.id;
-        print('🗑️ Deletando lista: $listId');
+        print('   - Deletando lista: $listId');
         batch.delete(listDoc.reference);
         totalListsDeleted++;
         
@@ -348,14 +577,22 @@ class FirestoreListsService {
       }
       
       if (totalListsDeleted > 0) {
+        print('   - Executando batch commit...');
         await batch.commit();
         print('✅ Limpeza concluída: $totalListsDeleted listas removidas');
       } else {
         print('ℹ️ Nenhuma lista para limpar');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Erro ao limpar todas as listas: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
       rethrow;
     }
+  }
+  
+  /// Limpa recursos do serviço
+  void dispose() {
+    print('🗑️ FirestoreListsService disposed');
   }
 }

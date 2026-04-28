@@ -162,4 +162,10 @@ class _SectionsState extends State<Sections> {
       }
     });
   }
+  
+  @override
+  void dispose() {
+    print('🗑️ Sections disposed');
+    super.dispose();
+  }
 }

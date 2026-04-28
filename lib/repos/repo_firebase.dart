@@ -196,4 +196,10 @@ class _RepoState extends State<Repo> {
       },
     );
   }
+  
+  @override
+  void dispose() {
+    print('🗑️ Repo disposed');
+    super.dispose();
+  }
 }
