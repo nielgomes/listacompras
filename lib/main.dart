@@ -13,8 +13,15 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Carregar variáveis de ambiente
-    await dotenv.load(fileName: '.env');
+    // Carregar variáveis de ambiente com tratamento robusto
+    try {
+      await dotenv.load(fileName: '.env');
+      print('✅ Arquivo .env carregado com sucesso');
+    } catch (e, stackTrace) {
+      print('⚠️ Aviso: Não foi possível carregar .env: $e');
+      print('Stack trace: $stackTrace');
+      // Continua mesmo sem .env - o app tentará usar valores padrão
+    }
 
     // Inicializar Firebase
     try {

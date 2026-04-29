@@ -14,7 +14,13 @@ class AppConfig {
   
   /// Inicializa as variáveis de ambiente
   Future<void> init() async {
-    await dotenv.load(fileName: '.env');
+    try {
+      await dotenv.load(fileName: '.env');
+      print('✅ AppConfig: .env carregado com sucesso');
+    } catch (e) {
+      print('⚠️ AppConfig: Não foi possível carregar .env: $e');
+      print('   O app tentará usar valores padrão ou do google-services.json');
+    }
   }
   
   // ============================================

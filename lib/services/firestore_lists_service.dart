@@ -14,6 +14,9 @@ class FirestoreListsService {
   final AppConfig _config = AppConfig.instance;
   bool _isInitialized = false;
   
+  /// Verifica se o Firebase foi inicializado
+  bool get isInitialized => _isInitialized;
+  
   /// Inicializa o Firebase (deve ser chamado antes de usar o serviço)
   Future<void> initialize() async {
     // Evitar inicialização múltipla
@@ -27,59 +30,44 @@ class FirestoreListsService {
       await _config.init();
       print('✅ Variáveis de ambiente carregadas');
     } catch (e) {
-      print('❌ Erro ao carregar variáveis de ambiente: $e');
-      rethrow;
+      print('⚠️ Erro ao carregar variáveis de ambiente: $e');
+      print('   Tentando usar configurações do google-services.json...');
     }
     
     print('📋 Verificando configuração Firebase...');
     
-    if (_config.isFirebaseConfigured) {
-      print('✅ Firebase configurado');
-      print('   - Project ID: ${_config.firebaseProjectId}');
-      print('   - API Key: ${_config.firebaseApiKey.substring(0, 10)}...');
+    try {
+      // No Android/iOS, priorizar google-services.json (mais confiável)
+      // Usar .env apenas como fallback ou para Web
+      print('⚠️ Usando google-services.json (Android/iOS nativo)');
+      await Firebase.initializeApp();
       
-      try {
-        print('⚙️ Chamando Firebase.initializeApp()...');
-        await Firebase.initializeApp(
-          options: FirebaseOptions(
-            apiKey: _config.firebaseApiKey,
-            appId: _config.firebaseAppId,
-            messagingSenderId: _config.firebaseMessagingSenderId,
-            projectId: _config.firebaseProjectId,
-          ),
-        );
-        print('✅ Firebase inicializado com sucesso!');
-        
-        // Obter instância do Firestore PRIMEIRO
-        _firestore = FirebaseFirestore.instance;
-        print('📡 Firestore instance obtido');
-        
-        // Configurar Firestore DEPOIS de obter a instância
-        // Não definir host personalizado - deixar o SDK usar o padrão
-        // Isso resolve problemas de hang no Flutter Web
-        print('⚙️ Configurando Firestore...');
-        _firestore.settings = const Settings(
-          persistenceEnabled: true,
-          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-          // Não definir host e sslEnabled - deixa o SDK usar padrões do Firebase
-        );
-        print('✅ Firestore configurado (usando padrões do SDK)');
-      } catch (e, stackTrace) {
-        print('❌ Erro ao inicializar Firebase: $e');
-        print('Tipo: ${e.runtimeType}');
-        print('Stack trace: $stackTrace');
-        rethrow;
-      }
-    } else {
-      print('❌ Firebase não configurado');
-      print('   - Project ID: ${_config.firebaseProjectId.isEmpty ? "(vazio)" : "definido"}');
-      print('   - API Key: ${_config.firebaseApiKey.isEmpty ? "(vazio)" : "definido"}');
-      print('   - App ID: ${_config.firebaseAppId.isEmpty ? "(vazio)" : "definido"}');
-      throw Exception('Firebase not configured. Check your .env file.');
+      print('✅ Firebase inicializado com sucesso!');
+      
+      // Obter instância do Firestore PRIMEIRO
+      _firestore = FirebaseFirestore.instance;
+      print('📡 Firestore instance obtido');
+      
+      // Configurar Firestore DEPOIS de obter a instância
+      // Não definir host personalizado - deixar o SDK usar o padrão
+      // Isso resolve problemas de hang no Flutter Web
+      print('⚙️ Configurando Firestore...');
+      _firestore.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        // Não definir host e sslEnabled - deixa o SDK usar padrões do Firebase
+      );
+      print('✅ Firestore configurado (usando padrões do SDK)');
+    } catch (e, stackTrace) {
+      print('❌ Erro ao inicializar Firebase: $e');
+      print('Tipo: ${e.runtimeType}');
+      print('Stack trace: $stackTrace');
+      // Não rethrow - permite que o app continue sem Firebase
+      print('⚠️ App continuará sem Firebase - funcionalidade limitada');
     }
     
     _isInitialized = true;
-    print('✅ Firebase inicializado com sucesso!');
+    print('✅ Inicialização concluída');
   }
   
   /// Coleção principal das listas de compras

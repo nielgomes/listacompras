@@ -50,6 +50,9 @@ app.*.map.json
 .env
 .env.local
 .env.*.local
+.env.web
 
 node_modules/
 documentacao_oficial_openrouter.md
+google-services.json
+.kotlin/

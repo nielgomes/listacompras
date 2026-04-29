@@ -17,14 +17,37 @@ class _HomeState extends State<Home> {
   final FirestoreListsService _firestoreService = FirestoreListsService.instance;
 
   bool _isComposing = false;
+  bool _firebaseReady = false;
+  String? _errorMessage;
 
-  late final Stream<List<DocumentSnapshot>> _listsStream =
-      _firestoreService.listenToLists(onlyActive: true);
+  Stream<List<DocumentSnapshot>>? _listsStream;
 
   @override
   void initState() {
     super.initState();
-    print('📥 HomeState criado — lista sincronizada com Firebase em tempo real');
+    print('📥 HomeState criado — verificando Firebase...');
+    _checkFirebase();
+  }
+
+  Future<void> _checkFirebase() async {
+    try {
+      // Verificar se Firebase está inicializado
+      if (!_firestoreService.isInitialized) {
+        print('⚠️ Firebase não inicializado, tentando inicializar...');
+        await _firestoreService.initialize();
+      }
+      _listsStream = _firestoreService.listenToLists(onlyActive: true);
+      setState(() {
+        _firebaseReady = true;
+      });
+    } catch (e, stackTrace) {
+      print('❌ Erro ao verificar Firebase: $e');
+      print('Stack trace: $stackTrace');
+      setState(() {
+        _firebaseReady = true;
+        _errorMessage = 'Não foi possível conectar ao Firebase. Verifique sua conexão.';
+      });
+    }
   }
   
   @override
@@ -390,11 +413,7 @@ class _HomeState extends State<Home> {
           backgroundColor: Colors.blueAccent,
           centerTitle: true,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.add_circle),
-              onPressed: _showCreateListDialog,
-              tooltip: 'Criar nova lista',
-            ),
+            // Ícone de Listas Inteligentes (mantido na barra)
             IconButton(
               icon: const Icon(Icons.auto_awesome),
               onPressed: () {
@@ -408,38 +427,77 @@ class _HomeState extends State<Home> {
               },
               tooltip: 'Listas Inteligentes',
             ),
-            IconButton(
-              icon: const Icon(Icons.checklist),
-              onPressed: () => _toggleAllItems(true),
-              tooltip: 'Marcar todos',
-            ),
-            IconButton(
-              icon: const Icon(Icons.remove_done),
-              onPressed: () => _toggleAllItems(false),
-              tooltip: 'Desmarcar todos',
-            ),
-            IconButton(
-              icon: const Icon(Icons.sync),
-              onPressed: () {
-                print('🔄 Sincronização automática via StreamBuilder');
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Dados sincronizados automaticamente!'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-              },
-              tooltip: 'Sincronizar',
-            ),
+            // Menu lateral com as demais opções
             PopupMenuButton<String>(
               onSelected: (value) {
-                if (value == 'limpar') {
-                  _showClearConfirmationDialog();
-                } else if (value == 'testar') {
-                  _testFirestoreConnection();
+                switch (value) {
+                  case 'nova_lista':
+                    _showCreateListDialog();
+                    break;
+                  case 'sincronizar':
+                    print('🔄 Sincronização automática via StreamBuilder');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Dados sincronizados automaticamente!'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                    break;
+                  case 'marcar_todos':
+                    _toggleAllItems(true);
+                    break;
+                  case 'desmarcar_todos':
+                    _toggleAllItems(false);
+                    break;
+                  case 'limpar':
+                    _showClearConfirmationDialog();
+                    break;
+                  case 'testar':
+                    _testFirestoreConnection();
+                    break;
                 }
               },
               itemBuilder: (BuildContext context) => [
+                const PopupMenuItem(
+                  value: 'nova_lista',
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_circle, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text('Nova lista'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'sincronizar',
+                  child: Row(
+                    children: [
+                      Icon(Icons.sync, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text('Sincronizar'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'marcar_todos',
+                  child: Row(
+                    children: [
+                      Icon(Icons.checklist, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text('Marcar todos'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'desmarcar_todos',
+                  child: Row(
+                    children: [
+                      Icon(Icons.remove_done, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text('Desmarcar todos'),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'limpar',
                   child: Row(
@@ -493,40 +551,66 @@ class _HomeState extends State<Home> {
               ),
             ),
             Expanded(
-              child: StreamBuilder<List<DocumentSnapshot>>(
-                stream: _listsStream,
-                builder: (context, snapshot) {
-                  print('📡 StreamBuilder connectionState: ${snapshot.connectionState}');
+              child: !_firebaseReady
+                  ? Center(child: CircularProgressIndicator())
+                  : _errorMessage != null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error, size: 64, color: Colors.red),
+                              SizedBox(height: 16),
+                              Text(_errorMessage!,
+                                  style: TextStyle(fontSize: 16, color: Colors.red),
+                                  textAlign: TextAlign.center),
+                              SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _firebaseReady = false;
+                                    _errorMessage = null;
+                                  });
+                                  _checkFirebase();
+                                },
+                                child: Text('Tentar novamente'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : StreamBuilder<List<DocumentSnapshot>>(
+                          stream: _listsStream,
+                          builder: (context, snapshot) {
+                            print('📡 StreamBuilder connectionState: ${snapshot.connectionState}');
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    print('   - Aguardando dados...');
-                    return Center(child: CircularProgressIndicator());
-                  }
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              print('   - Aguardando dados...');
+                              return Center(child: CircularProgressIndicator());
+                            }
 
-                  if (snapshot.hasError) {
-                    print('   - Erro no stream: ${snapshot.error}');
-                    return Center(
-                      child: Text('Erro ao carregar listas: ${snapshot.error}'),
-                    );
-                  }
+                            if (snapshot.hasError) {
+                              print('   - Erro no stream: ${snapshot.error}');
+                              return Center(
+                                child: Text('Erro ao carregar listas: ${snapshot.error}'),
+                              );
+                            }
 
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    print('   - Nenhuma lista encontrada');
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.shopping_cart, size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text('Nenhuma lista ainda',
-                              style: TextStyle(fontSize: 18, color: Colors.grey)),
-                          SizedBox(height: 8),
-                          Text('Crie sua primeira lista!',
-                              style: TextStyle(fontSize: 14, color: Colors.grey)),
-                        ],
-                      ),
-                    );
-                  }
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              print('   - Nenhuma lista encontrada');
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.shopping_cart, size: 64, color: Colors.grey),
+                                    SizedBox(height: 16),
+                                    Text('Nenhuma lista ainda',
+                                        style: TextStyle(fontSize: 18, color: Colors.grey)),
+                                    SizedBox(height: 8),
+                                    Text('Crie sua primeira lista!',
+                                        style: TextStyle(fontSize: 14, color: Colors.grey)),
+                                  ],
+                                ),
+                              );
+                            }
 
                   final lists = snapshot.data!;
                   print('   - ${lists.length} listas carregadas');

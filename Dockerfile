@@ -46,17 +46,17 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV FLUTTER_WEB_USE_SKIA=false
 
 # Configurar Android SDK (se necessário para build)
-# RUN mkdir -p ${ANDROID_SDK_ROOT} && \
-#     cd ${ANDROID_SDK_ROOT} && \
-#     wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip && \
-#     unzip -q cmdline-tools.zip && \
-#     mkdir -p cmdline-tools/latest && \
-#     mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && \
-#     yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true && \
-#     ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
-#         "platform-tools" \
-#         "platforms;android-34" \
-#         "build-tools;34.0.0" > /dev/null 2>&1 || true
+RUN mkdir -p ${ANDROID_SDK_ROOT} && \
+    cd ${ANDROID_SDK_ROOT} && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip && \
+    unzip -q cmdline-tools.zip && \
+    mkdir -p cmdline-tools/latest && \
+    mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && \
+    yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true && \
+    ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+        "platform-tools" \
+        "platforms;android-36" \
+        "build-tools;36.0.0" > /dev/null 2>&1 || true
 
 # Criar diretório de trabalho
 WORKDIR /workspace/listacompras
