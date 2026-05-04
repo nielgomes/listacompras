@@ -253,7 +253,7 @@ class OpenRouterService {
         final itemTitle = itemMatch.group(1)?.trim();
         if (itemTitle != null && itemTitle.isNotEmpty) {
           items.add({
-            'section': currentSection!,
+            'section': currentSection,
             'title': itemTitle,
           });
         }
@@ -267,7 +267,6 @@ class OpenRouterService {
   /// Parser alternativo para formatos não reconhecidos
   List<Map<String, String>> _parseListResponseFallback(String response) {
     final items = <Map<String, String>>[];
-    String? currentSection;
     
     // Tenta extrair seções e itens usando regex mais flexível
     final sectionRegex = RegExp(r'(?:^|\n)\s*(?:-\s*)?\[?([A-Za-zÀ-ÿ\s,]+)\]?(?:\s*\]|\n)');
@@ -287,7 +286,6 @@ class OpenRouterService {
     // Se encontrou seções, tenta associar itens
     if (foundSections.isNotEmpty) {
       for (final section in foundSections) {
-        currentSection = section;
         // Procura itens após esta seção
         final sectionIndex = response.indexOf(section);
         if (sectionIndex != -1) {
@@ -297,7 +295,7 @@ class OpenRouterService {
             final item = match.group(1)?.trim();
             if (item != null && item.isNotEmpty && !item.contains('[')) {
               items.add({
-                'section': currentSection!,
+                'section': section,
                 'title': item,
               });
             }

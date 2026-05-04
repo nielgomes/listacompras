@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:listacompras2/pages/home.dart';
-import 'package:listacompras2/pages/list_items.dart';
 import 'package:listacompras2/pages/sections.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
 import 'package:listacompras2/services/openrouter_service.dart';

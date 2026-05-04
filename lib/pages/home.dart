@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:listacompras2/pages/join_shared_list.dart';
 import 'package:listacompras2/pages/list_items.dart';
 import 'package:listacompras2/pages/smart_lists.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
@@ -16,7 +18,6 @@ class _HomeState extends State<Home> {
   final TextEditingController _toDoController = TextEditingController();
   final FirestoreListsService _firestoreService = FirestoreListsService.instance;
 
-  bool _isComposing = false;
   bool _firebaseReady = false;
   String? _errorMessage;
 
@@ -59,9 +60,6 @@ class _HomeState extends State<Home> {
 
   void _reset() {
     _toDoController.clear();
-    setState(() {
-      _isComposing = false;
-    });
   }
 
   Future<void> _saveList() async {
@@ -429,10 +427,25 @@ class _HomeState extends State<Home> {
             ),
             // Menu lateral com as demais opções
             PopupMenuButton<String>(
-              onSelected: (value) {
+              onSelected: (value) async {
                 switch (value) {
                   case 'nova_lista':
                     _showCreateListDialog();
+                    break;
+                  case 'entrar_lista':
+                    final result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => JoinSharedListPage(
+                          listsService: _firestoreService,
+                        ),
+                      ),
+                    );
+                    if (result == true && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Lista compartilhada adicionada!')),
+                      );
+                    }
                     break;
                   case 'sincronizar':
                     print('🔄 Sincronização automática via StreamBuilder');
@@ -465,6 +478,16 @@ class _HomeState extends State<Home> {
                       Icon(Icons.add_circle, color: Colors.blue),
                       SizedBox(width: 8),
                       Text('Nova lista'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'entrar_lista',
+                  child: Row(
+                    children: [
+                      Icon(Icons.group_add, color: Colors.purple),
+                      SizedBox(width: 8),
+                      Text('Entrar em lista'),
                     ],
                   ),
                 ),
@@ -624,6 +647,9 @@ class _HomeState extends State<Home> {
                       final name = data['name'] ?? 'Sem nome';
                       final description = data['description'] ?? '';
 
+                      final shareCode = data['shareCode'] as String?;
+                      final isShared = data['isShared'] as bool? ?? false;
+                      
                       return Card(
                         margin: EdgeInsets.only(bottom: 8),
                         child: ListTile(
@@ -631,12 +657,66 @@ class _HomeState extends State<Home> {
                             name,
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: description.isNotEmpty
-                              ? Text(description)
-                              : null,
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (description.isNotEmpty) Text(description),
+                              // Mostrar código de compartilhamento sempre que existir (não apenas quando isShared=true)
+                              if (shareCode != null)
+                                Container(
+                                  margin: EdgeInsets.only(top: 4),
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple.shade50,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.purple.shade200),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.share, size: 14, color: Colors.purple),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Compartilhar: $shareCode',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.purple.shade700,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              // Botão de compartilhar mais proeminente
+                              if (shareCode != null)
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    await Clipboard.setData(ClipboardData(text: shareCode));
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Código $shareCode copiado!'),
+                                          backgroundColor: Colors.purple,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: Icon(Icons.share, size: 16),
+                                  label: Text('Compartilhar'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.purple,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size(0, 32),
+                                    textStyle: TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              SizedBox(width: 4),
                               IconButton(
                                 icon: Icon(Icons.edit, color: Colors.blue),
                                 onPressed: () =>

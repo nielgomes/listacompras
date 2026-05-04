@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
 import 'package:listacompras2/services/openrouter_service.dart';
 
@@ -144,7 +145,7 @@ class _SmartListsPageState extends State<SmartListsPage> {
     try {
       print('💾 Salvando lista "$listName" com ${_generatedItems.length} itens...');
       
-      final listId = await _firestoreService.createListWithItems(
+      final result = await _firestoreService.createListWithItems(
         name: listName,
         items: _generatedItems.map((item) => {
           'title': item['title'] as String,
@@ -152,12 +153,13 @@ class _SmartListsPageState extends State<SmartListsPage> {
         }).toList(),
       );
 
-      print('✅ Lista salva com ID: $listId');
+      final listId = result['id']!;
+      final shareCode = result['shareCode']!;
+      print('✅ Lista salva com ID: $listId, código: $shareCode');
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lista "$listName" criada com sucesso!')),
-        );
+        // Mostrar diálogo com código de compartilhamento
+        await _showShareCodeDialog(listName, shareCode);
         
         // Limpa o formulário
         setState(() {
@@ -177,6 +179,62 @@ class _SmartListsPageState extends State<SmartListsPage> {
         );
       }
     }
+  }
+
+  /// Mostra diálogo com código de compartilhamento
+  Future<void> _showShareCodeDialog(String listName, String shareCode) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lista Criada!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Lista "$listName" criada com sucesso!'),
+            const SizedBox(height: 16),
+            const Text('Código para compartilhar:'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    shareCode,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 20),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: shareCode));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Código copiado!')),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -253,11 +253,18 @@ class _ListItemsPageState extends State<ListItemsPage> {
       return;
     }
 
-    print('📝 Iniciando adição de item: $title');
+    // Desabilitar botão IMEDIATAMENTE antes de qualquer operação
+    // Isso previne cliques múltiplos antes do setState atualizar a UI
     setState(() {
       _isAddingItem = true;
       _isClassifying = true;
     });
+    
+    // Limpar campo após desabilitar o botão
+    final itemTitle = title;
+    _itemController.clear();
+    
+    print('📝 Iniciando adição de item: $itemTitle');
     print('✅ Estados definidos: _isAddingItem=true, _isClassifying=true');
     
     String section = 'Outros';
@@ -268,18 +275,18 @@ class _ListItemsPageState extends State<ListItemsPage> {
         print('🤖 Tentando classificar item com IA...');
         setState(() => _isClassifying = true);
         
-        final classifiedSection = await _openRouterService.classifyItem(title)
+        final classifiedSection = await _openRouterService.classifyItem(itemTitle)
             .timeout(const Duration(seconds: 15), onTimeout: () {
           print('⚠️ Timeout na classificação IA, usando "Outros"');
           return 'Outros';
         });
         
         section = classifiedSection;
-        print('✅ Classificação IA: "$title" -> "$section"');
+        print('✅ Classificação IA: "$itemTitle" -> "$section"');
       } else {
         print('ℹ️ OpenRouter não configurado, usando seção padrão "Outros"');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('⚠️ Erro na classificação IA: $e');
       print('Usando seção padrão "Outros"');
       section = 'Outros';
@@ -291,14 +298,13 @@ class _ListItemsPageState extends State<ListItemsPage> {
       print('🚀 Chamando addItem no Firestore (seção: $section)...');
       await _firestoreService.addItem(
         listId: widget.listId,
-        title: title,
+        title: itemTitle,
         section: section,
       );
       print('✅ Item adicionado com sucesso!');
-      _itemController.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Item "$title" adicionado em $section')),
+          SnackBar(content: Text('Item "$itemTitle" adicionado em $section')),
         );
       }
     } catch (e, stackTrace) {
@@ -319,51 +325,6 @@ class _ListItemsPageState extends State<ListItemsPage> {
         print('✅ Estados resetados para false');
       } else {
         print('⚠️ Widget não está mounted');
-      }
-    }
-  }
-
-  Future<void> _confirmDeleteList() async {
-    print('🗑️ _confirmDeleteList: listId=${widget.listId}');
-    
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Excluir lista?'),
-        content: const Text('Esta ação não pode ser desfeita. Todos os itens serão perdidos.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Excluir'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirm == true) {
-      print('   - Excluindo lista...');
-      try {
-        await _firestoreService.deleteList(widget.listId);
-        print('   ✅ Lista excluída com sucesso');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Lista excluída')),
-          );
-          Navigator.pop(context);
-        }
-      } catch (e, stackTrace) {
-        print('❌ Erro ao excluir lista: $e');
-        print('Stack trace: $stackTrace');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erro ao excluir lista: $e')),
-          );
-        }
       }
     }
   }

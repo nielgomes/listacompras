@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:listacompras2/config/app_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Serviço para gerenciar listas de compras no Firestore com suporte a listas nomeadas
 class FirestoreListsService {
@@ -16,6 +17,17 @@ class FirestoreListsService {
   
   /// Verifica se o Firebase foi inicializado
   bool get isInitialized => _isInitialized;
+  
+  /// ID do usuário atual (simulado - em produção viria do Firebase Auth)
+  String? _currentUserId;
+  
+  /// Define o ID do usuário atual
+  set currentUserId(String? id) => _currentUserId = id;
+  
+  /// Gera um ID de usuário simples baseado no timestamp
+  String _generateUserId() {
+    return 'user_${DateTime.now().millisecondsSinceEpoch}';
+  }
   
   /// Inicializa o Firebase (deve ser chamado antes de usar o serviço)
   Future<void> initialize() async {
@@ -35,6 +47,22 @@ class FirestoreListsService {
     }
     
     print('📋 Verificando configuração Firebase...');
+    
+    // Adicionar timeout para evitar loading infinito
+    try {
+      await initializeInternal().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('⚠️ Timeout na inicialização do Firebase (30s)');
+          print('   App continuará sem Firebase - funcionalidade limitada');
+        },
+      );
+    } catch (e) {
+      print('⚠️ Erro na inicialização com timeout: $e');
+    }
+  }
+  
+  Future<void> initializeInternal() async {
     
     try {
       // No Android/iOS, priorizar google-services.json (mais confiável)
@@ -67,7 +95,41 @@ class FirestoreListsService {
     }
     
     _isInitialized = true;
+    
+    // Carregar ou gerar ID do usuário persistente
+    await _loadOrCreateUserId();
+    
     print('✅ Inicialização concluída');
+  }
+  
+  /// Carrega o ID do usuário do SharedPreferences ou gera um novo
+  Future<void> _loadOrCreateUserId() async {
+    try {
+      print('🔧 _loadOrCreateUserId: Iniciando...');
+      final prefs = await SharedPreferences.getInstance();
+      _currentUserId = prefs.getString('user_id');
+      
+      print('🔧 SharedPreferences carregado. user_id atual: $_currentUserId');
+      
+      if (_currentUserId == null) {
+        _currentUserId = _generateUserId();
+        await prefs.setString('user_id', _currentUserId!);
+        print('👤 Novo ID do usuário gerado e salvo: $_currentUserId');
+        
+        // Verificar se salvou corretamente
+        final verifyPrefs = await SharedPreferences.getInstance();
+        final saved = verifyPrefs.getString('user_id');
+        print('🔧 Verificação: userId salvo=$saved');
+      } else {
+        print('👤 ID do usuário carregado: $_currentUserId');
+      }
+    } catch (e, stackTrace) {
+      print('⚠️ Erro ao carregar userId: $e');
+      print('Stack trace: $stackTrace');
+      // Fallback se SharedPreferences falhar
+      _currentUserId = _generateUserId();
+      print('⚠️ Gerado novo userId como fallback: $_currentUserId');
+    }
   }
   
   /// Coleção principal das listas de compras
@@ -81,6 +143,36 @@ class FirestoreListsService {
   // ============================================
   // Operações com Listas
   // ============================================
+  
+  /// Gera um código aleatório para compartilhamento
+  String _generateShareCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    var code = '';
+    var num = random;
+    for (var i = 0; i < 6; i++) {
+      code += chars[num % chars.length];
+      num = num ~/ chars.length;
+    }
+    return code;
+  }
+  
+  /// Gera um código único verificando se já existe no banco
+  Future<String> _generateUniqueShareCode() async {
+    String code = _generateShareCode(); // Valor padrão inicial
+    bool exists = true;
+    int attempts = 0;
+    
+    while (exists && attempts < 10) {
+      code = _generateShareCode();
+      final query = _listsCollection.where('shareCode', isEqualTo: code).limit(1);
+      final snapshot = await query.get();
+      exists = snapshot.docs.isNotEmpty;
+      attempts++;
+    }
+    
+    return code;
+  }
   
   /// Cria uma nova lista de compras
   Future<String> createList({
@@ -107,17 +199,54 @@ class FirestoreListsService {
     print('   - Dados: name=$name, description=${description ?? ""}');
     
     try {
+      // Gerar código único para compartilhamento
+      print('   - Gerando código único de compartilhamento...');
+      final shareCode = await _generateUniqueShareCode();
+      print('   - Código gerado: $shareCode');
+      
       // Usar add() simples - sem timeout
       // O add() tem comportamento mais consistente no Flutter Web
       print('   🚀 Executando add()...');
+      
+      // Garantir que temos um userId e salvá-lo se for novo
+      if (_currentUserId == null) {
+        print('⚠️ _currentUserId é NULL no createList! Gerando novo...');
+        _currentUserId = _generateUserId();
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_id', _currentUserId!);
+          print('👤 Novo ID salvo no SharedPreferences: $_currentUserId');
+          
+          // Verificar se salvou
+          final verifyPrefs = await SharedPreferences.getInstance();
+          final saved = verifyPrefs.getString('user_id');
+          print('🔧 Verificação: userId salvo=$saved');
+        } catch (e) {
+          print('⚠️ Erro ao salvar userId: $e');
+        }
+      }
+      final userId = _currentUserId!;
+      print('📝 Criando lista com ownerId=$userId, shareCode=$shareCode');
+      
       final docRef = await _listsCollection.add({
         'name': name,
         'description': description ?? '',
         'createdAt': DateTime.now().toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
         'isActive': true,
+        // Campos de compartilhamento
+        'shareCode': shareCode,
+        'ownerId': userId,
+        'members': {userId: {'name': 'Proprietário', 'role': 'owner'}},
+        'isShared': false,
       });
-      print('✅ Lista criada com ID: ${docRef.id}');
+      print('✅ Lista criada com ID: ${docRef.id}, ownerId: $userId');
+      
+      // Verificar se salvou corretamente lendo o documento
+      final verifyDoc = await docRef.get();
+      final savedData = verifyDoc.data() as Map<String, dynamic>;
+      print('🔧 Verificação: Lista salva com ownerId=${savedData['ownerId']}, members=${savedData['members']}');
+      
       return docRef.id;
     } catch (e, stackTrace) {
       print('❌ Erro ao criar lista: $e');
@@ -213,7 +342,31 @@ class FirestoreListsService {
       }
       final snapshot = await query.get();
       print('   - Encontradas ${snapshot.docs.length} listas');
-      return snapshot.docs;
+      
+      // Filtrar listas que pertencem ao usuário atual (owner ou membro)
+      // Se _currentUserId for null, retornar lista vazia
+      if (_currentUserId == null) {
+        print('⚠️ getLists: _currentUserId é NULL! Retornando lista vazia.');
+        return [];
+      }
+      
+      final filteredDocs = snapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final ownerId = data['ownerId'] as String?;
+        final members = Map<String, dynamic>.from(data['members'] ?? {});
+        
+        // Se não tem ownerId (lista antiga ou corrompida), não mostrar para ninguém
+        if (ownerId == null) {
+          final listName = data['name'] ?? 'Sem nome';
+          print('   - Lista "$listName": SEM ownerId (IGNORANDO)');
+          return false;
+        }
+        
+        // Mostrar se é proprietário ou membro
+        return ownerId == _currentUserId || members.containsKey(_currentUserId);
+      }).toList();
+      
+      return filteredDocs;
     } catch (e, stackTrace) {
       print('❌ Erro ao obter listas: $e');
       print('Stack trace: $stackTrace');
@@ -225,7 +378,11 @@ class FirestoreListsService {
   Stream<List<DocumentSnapshot>> listenToLists({
     bool onlyActive = true,
   }) {
-    print('📡 listenToLists: onlyActive=$onlyActive');
+    print('📡 listenToLists: onlyActive=$onlyActive, _currentUserId=$_currentUserId');
+    
+    if (_currentUserId == null) {
+      print('⚠️ ATENÇÃO: _currentUserId é NULL! Isso causará filtragem incorreta.');
+    }
     
     Query query = _listsCollection;
     
@@ -233,14 +390,216 @@ class FirestoreListsService {
       query = query.where('isActive', isEqualTo: true);
     }
     
+    // Removido orderBy('name') para não depender de índice composto
+    // A ordenação será feita no cliente
     return query
-        .orderBy('name')  // Ordena alfabeticamente por nome
         .snapshots()
-        .map((snapshot) => snapshot.docs)
+        .map((snapshot) {
+          final docs = snapshot.docs;
+          
+          // Filtrar listas que pertencem ao usuário atual (owner ou membro)
+          print('🔍 Filtrando listas para _currentUserId=$_currentUserId');
+          
+          // Verificar se _currentUserId está definido
+          if (_currentUserId == null) {
+            print('⚠️ ATENÇÃO: _currentUserId é NULL! Nenhuma lista será exibida.');
+            return <DocumentSnapshot>[];
+          }
+          
+          final filteredDocs = docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final ownerId = data['ownerId'] as String?;
+            final members = Map<String, dynamic>.from(data['members'] ?? {});
+            final listName = data['name'] ?? 'Sem nome';
+            
+            // Se não tem ownerId (lista antiga ou corrompida), não mostrar para ninguém
+            // Como o usuário informou que não existem listas antigas, isso não deve acontecer
+            if (ownerId == null) {
+              print('   - Lista "$listName": SEM ownerId (IGNORANDO - lista não será exibida)');
+              return false;
+            }
+            
+            // Verificar se é proprietário ou membro
+            final isOwner = ownerId == _currentUserId;
+            final isMember = members.containsKey(_currentUserId);
+            
+            print('   - Lista "$listName": ownerId=$ownerId, isOwner=$isOwner, isMember=$isMember');
+            
+            return isOwner || isMember;
+          }).toList();
+          
+          // Ordenar por nome no cliente
+          filteredDocs.sort((a, b) {
+            final aName = (a.data() as Map<String, dynamic>)['name'] ?? '';
+            final bName = (b.data() as Map<String, dynamic>)['name'] ?? '';
+            return aName.compareTo(bName);
+          });
+          
+          return filteredDocs;
+        })
         .handleError((error, stackTrace) {
       print('❌ Erro no stream de listas: $error');
       print('Stack trace: $stackTrace');
     });
+  }
+  
+  // ============================================
+  // Operações de Compartilhamento
+  // ============================================
+  
+  /// Busca lista pelo código de compartilhamento
+  Future<DocumentSnapshot?> getListByShareCode(String shareCode) async {
+    print('🔍 getListByShareCode: $shareCode');
+    
+    try {
+      // Buscar lista pelo código, apenas listas ativas
+      final query = _listsCollection
+          .where('shareCode', isEqualTo: shareCode)
+          .where('isActive', isEqualTo: true)
+          .limit(1);
+      final snapshot = await query.get();
+      
+      if (snapshot.docs.isEmpty) {
+        print('   - Lista não encontrada ou inativa');
+        return null;
+      }
+      
+      print('   ✅ Lista encontrada: ${snapshot.docs.first.id}');
+      return snapshot.docs.first;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao buscar lista por código: $e');
+      print('Stack trace: $stackTrace');
+      // Se falhar por falta de índice, tentar busca alternativa
+      try {
+        print('   - Tentando busca alternativa sem filtro isActive...');
+        final altQuery = _listsCollection.where('shareCode', isEqualTo: shareCode).limit(1);
+        final altSnapshot = await altQuery.get();
+        
+        if (altSnapshot.docs.isEmpty) {
+          print('   - Lista não encontrada (busca alternativa)');
+          return null;
+        }
+        
+        final doc = altSnapshot.docs.first;
+        final data = doc.data() as Map<String, dynamic>;
+        
+        // Verificar se está ativa manualmente
+        if (data['isActive'] == false) {
+          print('   - Lista encontrada mas está inativa');
+          return null;
+        }
+        
+        print('   ✅ Lista encontrada (busca alternativa): ${doc.id}');
+        return doc;
+      } catch (e2) {
+        print('❌ Erro na busca alternativa: $e2');
+        return null;
+      }
+    }
+  }
+  
+  /// Entra em uma lista compartilhada usando o código
+  /// Retorna true se entrou com sucesso
+  Future<bool> joinSharedList({
+    required String listId,
+    required String userName,
+  }) async {
+    print('🤝 joinSharedList: listId=$listId, userName=$userName');
+    
+    try {
+      // Verificar se a lista existe e está ativa
+      final listDoc = await _listsCollection.doc(listId).get();
+      if (!listDoc.exists) {
+        print('   - Lista não encontrada');
+        return false;
+      }
+      
+      final data = listDoc.data() as Map<String, dynamic>;
+      
+      // Verificar se a lista está ativa
+      if (data['isActive'] == false) {
+        print('   - Lista está inativa/deletada');
+        return false;
+      }
+      
+      final members = Map<String, dynamic>.from(data['members'] ?? {});
+      
+      // Usar o ID do usuário atual (ou gerar um se não existir) e salvá-lo
+      if (_currentUserId == null) {
+        _currentUserId = _generateUserId();
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_id', _currentUserId!);
+          print('👤 Novo ID salvo no SharedPreferences: $_currentUserId');
+        } catch (e) {
+          print('⚠️ Erro ao salvar userId: $e');
+        }
+      }
+      final userId = _currentUserId!;
+      
+      // Adicionar usuário aos membros
+      members[userId] = {
+        'name': userName,
+        'role': 'editor',
+        'joinedAt': DateTime.now().toIso8601String(),
+      };
+      
+      await _listsCollection.doc(listId).update({
+        'members': members,
+        'isShared': true,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+      
+      print('   ✅ Entrou na lista com sucesso como $userId');
+      return true;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao entrar na lista compartilhada: $e');
+      print('Stack trace: $stackTrace');
+      return false;
+    }
+  }
+  
+  /// Verifica se o usuário tem permissão para deletar a lista
+  Future<bool> canUserDeleteList({
+    required String listId,
+    required String userId,
+  }) async {
+    print('🔐 canUserDeleteList: listId=$listId, userId=$userId');
+    
+    try {
+      final listDoc = await _listsCollection.doc(listId).get();
+      if (!listDoc.exists) return false;
+      
+      final data = listDoc.data() as Map<String, dynamic>;
+      final members = Map<String, dynamic>.from(data['members'] ?? {});
+      
+      // Proprietário tem permissão
+      if (data['ownerId'] == userId) return true;
+      
+      // Verificar se é membro com role 'owner'
+      final member = members[userId];
+      if (member != null && member['role'] == 'owner') return true;
+      
+      return false;
+    } catch (e) {
+      print('❌ Erro ao verificar permissão: $e');
+      return false;
+    }
+  }
+  
+  /// Deleta uma lista com verificação de permissão
+  Future<void> deleteSharedList({
+    required String listId,
+    required String userId,
+  }) async {
+    print('🗑️ deleteSharedList: listId=$listId, userId=$userId');
+    
+    final canDelete = await canUserDeleteList(listId: listId, userId: userId);
+    if (!canDelete) {
+      throw Exception('Você não tem permissão para excluir esta lista');
+    }
+    
+    await deleteList(listId);
   }
   
   // ============================================
@@ -279,29 +638,17 @@ class FirestoreListsService {
       };
       print('   - Dados: $data');
       
-      // SOLUÇÃO PARA FLUTTER WEB:
-      // O método add()/set() tem um problema conhecido no Flutter Web onde o Future
-      // nunca completa quando há um listener ativo (StreamBuilder) na mesma coleção.
-      // Isso acontece porque o Firestore Web SDK otimiza operações com listeners.
-      //
-      // A solução correta é:
-      // 1. Gerar o ID do documento manualmente
-      // 2. Chamar set() SEM aguardar (fire-and-forget)
-      // 3. Retornar o ID imediatamente
-      // 4. Confiar no Stream (listener) para confirmar que o item foi salvo
-      //
-      // O StreamBuilder na UI vai receber a atualização automaticamente via snapshot,
-      // então não precisamos esperar pelo Future completar.
-      print('   🚀 Executando set() (fire-and-forget para Web)...');
-      final docRef = collection.doc();
+      // Usar add() com timeout para garantir que o item seja salvo
+      print('   🚀 Executando add()...');
+      final docRef = await collection.add(data).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('   ⚠️ Timeout no add() após 30s');
+          throw Exception('Timeout ao adicionar item');
+        },
+      );
       
-      // Não usamos await aqui! O Future é executado em background.
-      // Se der erro, será capturado pelo listener do Stream.
-      docRef.set(data).catchError((error, stackTrace) {
-        print('⚠️ Erro assíncrono no set() (já salvo via stream): $error');
-      });
-      
-      print('✅ Item adicionado com ID: ${docRef.id} (retorno imediato)');
+      print('✅ Item adicionado com ID: ${docRef.id}');
       return docRef.id;
     } catch (e, stackTrace) {
       print('❌ Erro ao adicionar item: $e');
@@ -454,10 +801,24 @@ class FirestoreListsService {
   Stream<List<DocumentSnapshot>> listenToItems(String listId) {
     print('📡 listenToItems: listId=$listId');
     return _itemsCollection(listId)
-        .orderBy('section')  // Primeiro agrupa por seção
-        .orderBy('title')    // Depois ordena alfabeticamente por título
         .snapshots()
-        .map((snapshot) => snapshot.docs)
+        .map((snapshot) {
+          final docs = snapshot.docs;
+          // Ordenar por seção e depois por título no cliente
+          docs.sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>;
+            final bData = b.data() as Map<String, dynamic>;
+            final aSection = aData['section'] ?? '';
+            final bSection = bData['section'] ?? '';
+            final aTitle = aData['title'] ?? '';
+            final bTitle = bData['title'] ?? '';
+            
+            final sectionCompare = aSection.compareTo(bSection);
+            if (sectionCompare != 0) return sectionCompare;
+            return aTitle.compareTo(bTitle);
+          });
+          return docs;
+        })
         .handleError((error, stackTrace) {
       print('❌ Erro no stream de itens: $error');
       print('Stack trace: $stackTrace');
@@ -683,7 +1044,8 @@ class FirestoreListsService {
   }
   
   /// Cria uma lista com itens em uma única operação
-  Future<String> createListWithItems({
+  /// Retorna um Map com 'id' e 'shareCode' da lista criada
+  Future<Map<String, String>> createListWithItems({
     required String name,
     String? description,
     required List<Map<String, String>> items,
@@ -704,6 +1066,30 @@ class FirestoreListsService {
     try {
       print('🚀 Criando lista e itens em batch...');
       
+      // Garantir que temos um userId e salvá-lo se for novo
+      if (_currentUserId == null) {
+        print('⚠️ _currentUserId é NULL no createListWithItems! Gerando novo...');
+        _currentUserId = _generateUserId();
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_id', _currentUserId!);
+          print('👤 Novo ID salvo no SharedPreferences: $_currentUserId');
+          
+          // Verificar se salvou
+          final verifyPrefs = await SharedPreferences.getInstance();
+          final saved = verifyPrefs.getString('user_id');
+          print('🔧 Verificação: userId salvo=$saved');
+        } catch (e) {
+          print('⚠️ Erro ao salvar userId: $e');
+        }
+      }
+      final userId = _currentUserId!;
+      print('📝 Criando lista com itens - ownerId=$userId, shareCode será gerado');
+      
+      // Gerar código único para compartilhamento
+      final shareCode = await _generateUniqueShareCode();
+      print('   - Código gerado: $shareCode');
+      
       // Criar documento da lista
       final listRef = _listsCollection.doc();
       final batch = _firestore.batch();
@@ -715,6 +1101,11 @@ class FirestoreListsService {
         'createdAt': DateTime.now().toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
         'isActive': true,
+        // Campos de compartilhamento
+        'shareCode': shareCode,
+        'ownerId': userId,
+        'members': {userId: {'name': 'Proprietário', 'role': 'owner'}},
+        'isShared': false,
       });
       
       // Adicionar itens
@@ -738,8 +1129,18 @@ class FirestoreListsService {
         },
       );
       
-      print('✅ Lista criada com sucesso! ID: ${listRef.id}');
-      return listRef.id;
+      print('✅ Lista criada com sucesso! ID: ${listRef.id}, ownerId: $userId');
+      
+      // Verificar se salvou corretamente lendo o documento
+      final verifyDoc = await listRef.get();
+      if (verifyDoc.exists) {
+        final savedData = verifyDoc.data() as Map<String, dynamic>;
+        print('🔧 Verificação: Lista salva com ownerId=${savedData['ownerId']}, members=${savedData['members']}, shareCode=${savedData['shareCode']}');
+      } else {
+        print('⚠️ Verificação falhou: documento não encontrado após criação!');
+      }
+      
+      return {'id': listRef.id, 'shareCode': shareCode};
     } catch (e, stackTrace) {
       print('❌ Erro ao criar lista com itens: $e');
       print('Tipo: ${e.runtimeType}');
