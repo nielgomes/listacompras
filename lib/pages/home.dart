@@ -677,7 +677,7 @@ class _HomeState extends State<Home> {
                                       Icon(Icons.share, size: 14, color: Colors.purple),
                                       SizedBox(width: 4),
                                       Text(
-                                        'Compartilhar: $shareCode',
+                                        '$shareCode',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Colors.purple.shade700,
@@ -692,9 +692,11 @@ class _HomeState extends State<Home> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Botão de compartilhar mais proeminente
+                              // Botão de compartilhar (apenas ícone)
                               if (shareCode != null)
-                                ElevatedButton.icon(
+                                IconButton(
+                                  icon: Icon(Icons.share, color: Colors.purple),
+                                  tooltip: 'Copiar código: $shareCode',
                                   onPressed: () async {
                                     await Clipboard.setData(ClipboardData(text: shareCode));
                                     if (mounted) {
@@ -706,15 +708,6 @@ class _HomeState extends State<Home> {
                                       );
                                     }
                                   },
-                                  icon: Icon(Icons.share, size: 16),
-                                  label: Text('Compartilhar'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.purple,
-                                    foregroundColor: Colors.white,
-                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    minimumSize: Size(0, 32),
-                                    textStyle: TextStyle(fontSize: 12),
-                                  ),
                                 ),
                               SizedBox(width: 4),
                               IconButton(
