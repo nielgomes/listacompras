@@ -271,8 +271,14 @@ class _HomeState extends State<Home> {
     if (!listDoc.exists) return;
     
     final data = listDoc.data() as Map<String, dynamic>;
-    final isOwner = data['ownerId'] == userId;
     final members = Map<String, dynamic>.from(data['members'] ?? {});
+    
+    // Verificar role do usuário no mapa members
+    final userMemberData = members[userId] as Map<String, dynamic>?;
+    final userRole = userMemberData?['role'] as String?;
+    
+    // É owner se: ownerId bate OU role='owner' no mapa members
+    final isOwner = data['ownerId'] == userId || userRole == 'owner';
     final isMember = members.containsKey(userId) && !isOwner;
 
     if (isOwner) {

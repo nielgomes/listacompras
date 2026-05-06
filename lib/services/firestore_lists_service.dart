@@ -631,7 +631,12 @@ class FirestoreListsService {
       }
       
       // Verificar se não é o owner (owner não pode "sair", apenas excluir)
-      if (data['ownerId'] == userId) {
+      // Verifica tanto ownerId quanto role no mapa members
+      final isOwnerById = data['ownerId'] == userId;
+      final memberData = members[userId] as Map<String, dynamic>?;
+      final isOwnerByRole = memberData?['role'] == 'owner';
+      
+      if (isOwnerById || isOwnerByRole) {
         print('   - Owner não pode sair da lista, deve excluí-la');
         throw Exception('Proprietário não pode sair da lista. Use "Excluir lista"');
       }
