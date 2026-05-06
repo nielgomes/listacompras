@@ -260,46 +260,103 @@ class _HomeState extends State<Home> {
   Future<void> _deleteList(String listId) async {
     print('🗑️ _deleteList: listId=$listId');
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Excluir lista?'),
-        content: const Text('Esta ação não pode ser desfeita.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Excluir'),
-          ),
-        ],
-      ),
-    );
+    // Verificar se o usuário é owner ou membro
+    final userId = _firestoreService.currentUserId;
+    if (userId == null) {
+      print('❌ Usuário não identificado');
+      return;
+    }
 
-    if (confirm == true) {
-      print('   - Confirmou exclusão, chamando deleteList...');
-      try {
-        await _firestoreService.deleteList(listId);
-        print('   ✅ Lista deletada — StreamBuilder vai atualizar a UI automaticamente');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Lista excluída com sucesso!')),
-          );
+    final listDoc = await _firestoreService.listsCollection.doc(listId).get();
+    if (!listDoc.exists) return;
+    
+    final data = listDoc.data() as Map<String, dynamic>;
+    final isOwner = data['ownerId'] == userId;
+    final members = Map<String, dynamic>.from(data['members'] ?? {});
+    final isMember = members.containsKey(userId) && !isOwner;
+
+    if (isOwner) {
+      // Owner: pode excluir a lista
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Excluir lista?'),
+          content: const Text('Esta ação não pode ser desfeita. A lista será removida para todos os membros.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Excluir'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        print('   - Confirmou exclusão, chamando deleteList...');
+        try {
+          await _firestoreService.deleteList(listId);
+          print('   ✅ Lista deletada — StreamBuilder vai atualizar a UI automaticamente');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Lista excluída com sucesso!')),
+            );
+          }
+        } catch (e) {
+          print('❌ Erro ao excluir lista: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Erro ao excluir: $e')),
+            );
+          }
         }
-      } catch (e, stackTrace) {
-        print('❌ Erro ao excluir lista: $e');
-        print('Stack trace: $stackTrace');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erro ao excluir: $e')),
-          );
+      }
+    } else if (isMember) {
+      // Membro: pode apenas sair da lista
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Sair da lista?'),
+          content: const Text('Você sairá desta lista. Para entrar novamente, será necessário o código de compartilhamento.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.orange),
+              child: const Text('Sair'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        print('   - Confirmou saída da lista...');
+        try {
+          await _firestoreService.leaveList(listId: listId, userId: userId);
+          print('   ✅ Saiu da lista com sucesso');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Você saiu da lista')),
+            );
+          }
+        } catch (e) {
+          print('❌ Erro ao sair da lista: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Erro ao sair: $e')),
+            );
+          }
         }
       }
     }
   }
-
   Future<void> _showClearConfirmationDialog() async {
     print('🗑️ _showClearConfirmationDialog');
 
@@ -648,7 +705,6 @@ class _HomeState extends State<Home> {
                       final description = data['description'] ?? '';
 
                       final shareCode = data['shareCode'] as String?;
-                      final isShared = data['isShared'] as bool? ?? false;
                       
                       return Card(
                         margin: EdgeInsets.only(bottom: 8),

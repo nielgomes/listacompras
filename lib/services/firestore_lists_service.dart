@@ -21,6 +21,9 @@ class FirestoreListsService {
   /// ID do usuário atual (simulado - em produção viria do Firebase Auth)
   String? _currentUserId;
   
+  /// ID do usuário atual (público para leitura)
+  String? get currentUserId => _currentUserId;
+  
   /// Define o ID do usuário atual
   set currentUserId(String? id) => _currentUserId = id;
   
@@ -132,9 +135,11 @@ class FirestoreListsService {
     }
   }
   
-  /// Coleção principal das listas de compras
-  CollectionReference get _listsCollection =>
-      _firestore.collection('shopping_lists');
+  /// Coleção principal das listas de compras (pública para acesso externo)
+  CollectionReference get listsCollection => _firestore.collection('shopping_lists');
+  
+  /// Coleção principal das listas de compras (interna)
+  CollectionReference get _listsCollection => listsCollection;
   
   /// Subcoleção de itens dentro de uma lista
   CollectionReference _itemsCollection(String listId) =>
@@ -600,6 +605,52 @@ class FirestoreListsService {
     }
     
     await deleteList(listId);
+  }
+
+  /// Faz o usuário sair de uma lista compartilhada (apenas remove dos membros)
+  Future<bool> leaveList({
+    required String listId,
+    required String userId,
+  }) async {
+    print('🚪 leaveList: listId=$listId, userId=$userId');
+    
+    try {
+      final listDoc = await _listsCollection.doc(listId).get();
+      if (!listDoc.exists) {
+        print('   - Lista não encontrada');
+        return false;
+      }
+      
+      final data = listDoc.data() as Map<String, dynamic>;
+      final members = Map<String, dynamic>.from(data['members'] ?? {});
+      
+      // Verificar se o usuário é membro
+      if (!members.containsKey(userId)) {
+        print('   - Usuário não é membro desta lista');
+        return false;
+      }
+      
+      // Verificar se não é o owner (owner não pode "sair", apenas excluir)
+      if (data['ownerId'] == userId) {
+        print('   - Owner não pode sair da lista, deve excluí-la');
+        throw Exception('Proprietário não pode sair da lista. Use "Excluir lista"');
+      }
+      
+      // Remover usuário dos membros
+      members.remove(userId);
+      
+      await _listsCollection.doc(listId).update({
+        'members': members,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+      
+      print('   ✅ Usuário saiu da lista com sucesso');
+      return true;
+    } catch (e, stackTrace) {
+      print('❌ Erro ao sair da lista: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
   
   // ============================================

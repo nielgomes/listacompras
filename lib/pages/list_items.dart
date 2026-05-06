@@ -24,6 +24,7 @@ class _ListItemsPageState extends State<ListItemsPage> {
   bool _isAddingItem = false;
   bool _isClassifying = false;
   late final Stream<List<DocumentSnapshot>> _itemsStream;
+  String _filterText = '';
 
   static const Map<String, String> sectionLabels = {
     'Bebidas': 'Bebidas',
@@ -126,11 +127,23 @@ class _ListItemsPageState extends State<ListItemsPage> {
                 children: [
                   TextField(
                     controller: _itemController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Nome do item',
-                      hintText: 'Ex: Coca-Cola 2L, Maçã, etc.',
-                      border: OutlineInputBorder(),
+                      hintText: 'Digite para buscar ou adicionar item...',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _filterText.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _itemController.clear();
+                                setState(() => _filterText = '');
+                              },
+                              tooltip: 'Limpar filtro',
+                            )
+                          : null,
                     ),
+                    onChanged: (value) => setState(() => _filterText = value),
                     onSubmitted: (_) => _addItem(),
                   ),
                   if (_isClassifying)
@@ -167,6 +180,29 @@ class _ListItemsPageState extends State<ListItemsPage> {
               ),
             ),
           ),
+          // Indicador de filtragem (aparece apenas quando há filtro)
+          if (_filterText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: StreamBuilder<List<DocumentSnapshot>>(
+                stream: _itemsStream,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox.shrink();
+                  final totalItems = snapshot.data!.length;
+                  final filteredCount = _filterText.isEmpty 
+                      ? totalItems 
+                      : snapshot.data!.where((item) {
+                          final data = item.data() as Map<String, dynamic>;
+                          final title = (data['title'] ?? '').toString().toLowerCase();
+                          return title.contains(_filterText.toLowerCase());
+                        }).length;
+                  return Text(
+                    '$filteredCount de $totalItems itens encontrados',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  );
+                },
+              ),
+            ),
           // Lista de itens
           Expanded(
             child: StreamBuilder<List<DocumentSnapshot>>(
@@ -196,11 +232,20 @@ class _ListItemsPageState extends State<ListItemsPage> {
                 final items = snapshot.data!;
                 print('   - ${items.length} itens carregados');
                 
+                // Aplicar filtro dinâmico baseado no _filterText
+                final filteredItems = _filterText.isEmpty 
+                    ? items 
+                    : items.where((item) {
+                        final data = item.data() as Map<String, dynamic>;
+                        final title = (data['title'] ?? '').toString().toLowerCase();
+                        return title.contains(_filterText.toLowerCase());
+                      }).toList();
+                
                 return ListView.builder(
                   padding: const EdgeInsets.all(8),
-                  itemCount: items.length,
+                  itemCount: filteredItems.length,
                   itemBuilder: (context, index) {
-                    final item = items[index];
+                    final item = filteredItems[index];
                     final data = item.data() as Map<String, dynamic>;
                     final title = data['title'] ?? 'Sem nome';
                     final section = data['section'] ?? 'Outros';
