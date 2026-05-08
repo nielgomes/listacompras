@@ -83,6 +83,64 @@ class OpenRouterService {
         'IMPORTANTE: Responda APENAS com o formato acima. Não explique, não adicione texto extra.';
   }
 
+
+
+  /// Gera uma lista de compras com contexto da web
+  /// 
+  /// Usa resultados do Brave Search como contexto adicional para o LLM
+  /// Se o contexto web estiver vazio ou irrelevante, o LLM usa seu conhecimento original
+  Future<List<Map<String, String>>> generateListWithWebContext(String context, {String? webContext}) async {
+    if (context.trim().isEmpty) {
+      return [];
+    }
+
+    // Decide qual prompt usar baseado na disponibilidade de contexto web
+    String prompt;
+    if (webContext != null && webContext.trim().isNotEmpty) {
+      prompt = _buildListGenerationPromptWithWebContext(context, webContext);
+    } else {
+      prompt = _buildListGenerationPrompt(context);
+    }
+
+    try {
+      final response = await _sendRequest(prompt, maxTokens: 1000);
+
+      if (response != null && response.isNotEmpty) {
+        final items = _parseListResponse(response);
+        if (items.isEmpty) {
+          final fallbackItems = _parseListResponseFallback(response);
+          return fallbackItems;
+        }
+        return items;
+      }
+    } catch (e, stack) {
+      print('❌ Erro ao gerar lista com contexto web: $e');
+      print('Stack: $stack');
+    }
+
+    return [];
+  }
+
+  /// Cria o prompt para geração de lista com contexto da web
+  String _buildListGenerationPromptWithWebContext(String context, String webContext) {
+    final sectionsStr = _sections.join(', ');
+    return 'Você é um assistente de compras. Crie uma lista de compras para: $context\n\n'
+        'Use APENAS estas seções: $sectionsStr\n\n'
+        'Informações da web que podem ajudar (use APENAS o que for relevante ao contexto):\n'
+        '$webContext\n\n'
+        'IMPORTANTE: Use apenas as informações acima que sejam relevantes ao contexto. '
+        'Ignore informações irrelevantes. Se as informações da web não forem úteis, '
+        'use seu conhecimento para criar a lista.\n\n'
+        'Formato de saída EXATO (não adicione nada além disso):\n'
+        '- [Bebidas]\n'
+        '  * Suco\n'
+        '  * Refrigerante\n'
+        '- [Comidas]\n'
+        '  * Arroz\n'
+        '  * Feijão\n\n'
+        'IMPORTANTE: Responda APENAS com o formato acima. Não explique, não adicione texto extra.';
+  }
+
   /// Envia requisição para OpenRouter
   Future<String?> _sendRequest(String prompt, {String? modelOverride, int maxTokens = 500}) async {
     final apiKey = _getApiKey();

@@ -278,6 +278,8 @@ flutter build apk --debug
 
 ```bash
 flutter build apk --release
+or
+docker compose exec flutter flutter build apk --release
 ```
 
 ### Transferir para o celular

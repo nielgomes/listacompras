@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:listacompras2/services/firestore_lists_service.dart';
 import 'package:listacompras2/services/openrouter_service.dart';
+import 'package:listacompras2/services/brave_search_service.dart';
 
 /// Tela para gerar listas de compras de forma inteligente usando IA
 class SmartListsPage extends StatefulWidget {
@@ -14,12 +15,14 @@ class SmartListsPage extends StatefulWidget {
 class _SmartListsPageState extends State<SmartListsPage> {
   final FirestoreListsService _firestoreService = FirestoreListsService.instance;
   final OpenRouterService _openRouterService = OpenRouterService();
+  final BraveSearchService _braveSearchService = BraveSearchService();
   final TextEditingController _contextController = TextEditingController();
   
   bool _isGenerating = false;
   bool _isLoadingService = false;
   List<Map<String, dynamic>> _generatedItems = [];
   String _generationError = '';
+  String _loadingPhase = ''; // 'searching' ou 'generating'
 
   @override
   void initState() {
@@ -31,12 +34,24 @@ class _SmartListsPageState extends State<SmartListsPage> {
     setState(() => _isLoadingService = true);
     try {
       await _openRouterService.initialize();
+    await _braveSearchService.initialize();
     } catch (e) {
       print('⚠️ Erro ao inicializar OpenRouterService: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoadingService = false);
       }
+    }
+  }
+
+  String _getLoadingText() {
+    switch (_loadingPhase) {
+      case 'searching':
+        return 'Pesquisando itens na Internet...';
+      case 'generating':
+        return 'Gerando lista com IA...';
+      default:
+        return 'Gerar Lista com IA';
     }
   }
 
@@ -51,15 +66,37 @@ class _SmartListsPageState extends State<SmartListsPage> {
 
     setState(() {
       _isGenerating = true;
+      _loadingPhase = 'searching';
       _generatedItems = [];
       _generationError = '';
     });
 
     try {
+      print('🔍 Buscando contexto na web...');
+      String? webContext;
+      
+      // Tenta buscar na web para obter contexto adicional
+      if (_braveSearchService.isConfigured) {
+        webContext = await _braveSearchService.search(userContext);
+        if (webContext != null && webContext.isNotEmpty) {
+          print('✅ Contexto web obtido (${webContext.length} chars)');
+        } else {
+          print('⚠️ Nenhum contexto web útil encontrado, usando conhecimento do LLM');
+        }
+      } else {
+        print('⚠️ Brave Search não configurado, usando conhecimento do LLM');
+      }
+      
       print('🤖 Gerando lista inteligente para contexto: "$userContext"');
       
-      final items = await _openRouterService.generateList(userContext)
-          .timeout(const Duration(seconds: 30), onTimeout: () {
+      setState(() {
+        _loadingPhase = 'generating';
+      });
+      
+      final items = await _openRouterService.generateListWithWebContext(
+        userContext,
+        webContext: webContext,
+      ).timeout(const Duration(seconds: 30), onTimeout: () {
         print('⚠️ Timeout na geração da lista');
         return [];
       });
@@ -68,6 +105,7 @@ class _SmartListsPageState extends State<SmartListsPage> {
         setState(() {
           _generatedItems = items;
           _isGenerating = false;
+          _loadingPhase = '';
         });
 
         if (items.isEmpty) {
@@ -87,6 +125,7 @@ class _SmartListsPageState extends State<SmartListsPage> {
       if (mounted) {
         setState(() {
           _isGenerating = false;
+          _loadingPhase = '';
           _generationError = 'Erro ao gerar lista: $e';
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -320,7 +359,7 @@ class _SmartListsPageState extends State<SmartListsPage> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
                           : const Icon(Icons.rocket_launch),
-                      label: const Text('Gerar Lista com IA'),
+                      label: Text(_getLoadingText()),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
