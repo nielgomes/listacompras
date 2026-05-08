@@ -14,9 +14,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # Firebase (Sincronização em Tempo Real)
-  firebase_core: ^3.15.2
-  cloud_firestore: ^5.6.12
-  firebase_auth: ^5.7.0
+  firebase_core: ^4.7.0
+  cloud_firestore: ^6.3.0
+  firebase_auth: ^6.4.0
   
   # Gerenciamento de Estado (MobX)
   mobx: ^2.4.0
