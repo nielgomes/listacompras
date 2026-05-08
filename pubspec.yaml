@@ -23,7 +23,7 @@ dependencies:
   flutter_mobx: ^2.2.1+1
   
   # Variáveis de Ambiente
-  flutter_dotenv: ^5.2.1  # Mantido por compatibilidade
+  flutter_dotenv: ^6.0.1
   
   # HTTP (OpenRouter API)
   http: ^1.5.0
