@@ -103,3 +103,23 @@ class BraveSearchService {
     return key != null && key.isNotEmpty && key != 'CHANGE_ME';
   }
 }
+
+void main() async {
+  final service = BraveSearchService();
+  await service.initialize();
+  
+  if (service.isConfigured) {
+    print('\n🧪 Testando busca...');
+    final result = await service.search('risoto funghi ingredientes 3 pessoas');
+    if (result != null) {
+      print('\n📋 Resultado:');
+      print('=' * 50);
+      print(result);
+      print('=' * 50);
+    } else {
+      print('❌ Nenhum resultado retornado');
+    }
+  } else {
+    print('❌ Serviço não configurado corretamente');
+  }
+}
